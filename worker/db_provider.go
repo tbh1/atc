@@ -49,6 +49,7 @@ type dbProvider struct {
 	dbVolumeFactory           dbng.VolumeFactory
 	pipelineDBFactory         db.PipelineDBFactory
 	dbWorkerFactory           dbng.WorkerFactory
+	potatoFactory             PotatoFactory
 }
 
 func NewDBWorkerProvider(
@@ -64,6 +65,7 @@ func NewDBWorkerProvider(
 	dbVolumeFactory dbng.VolumeFactory,
 	pipelineDBFactory db.PipelineDBFactory,
 	workerFactory dbng.WorkerFactory,
+	potatoFactory PotatoFactory,
 ) WorkerProvider {
 	return &dbProvider{
 		logger:                    logger,
@@ -78,6 +80,7 @@ func NewDBWorkerProvider(
 		dbVolumeFactory:           dbVolumeFactory,
 		dbWorkerFactory:           workerFactory,
 		pipelineDBFactory:         pipelineDBFactory,
+		potatoFactory:             potatoFactory,
 	}
 }
 
@@ -182,6 +185,7 @@ func (provider *dbProvider) newGardenWorker(tikTok clock.Clock, savedWorker *dbn
 		provider.dbContainerFactory,
 		provider.dbResourceCacheFactory,
 		provider.dbResourceConfigFactory,
+		provider.potatoFactory,
 		provider.db,
 		provider,
 		tikTok,

@@ -370,6 +370,7 @@ func stateTransition(volumeID int, tx Tx, from, to VolumeState) error {
 		RunWith(tx).
 		Exec()
 	if err != nil {
+		// TODO: check for fkey violation
 		return err
 	}
 

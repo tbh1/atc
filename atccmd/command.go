@@ -44,6 +44,7 @@ import (
 	"github.com/concourse/atc/web/robotstxt"
 	"github.com/concourse/atc/worker"
 	"github.com/concourse/atc/worker/image"
+	"github.com/concourse/atc/worker/potato"
 	"github.com/concourse/atc/wrappa"
 	"github.com/concourse/retryhttp"
 	jwt "github.com/dgrijalva/jwt-go"
@@ -173,6 +174,8 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 	dbResourceCacheFactory := dbng.NewResourceCacheFactory(dbngConn, lockFactory)
 	dbResourceConfigFactory := dbng.NewResourceConfigFactory(dbngConn, lockFactory)
 	dbBaseResourceTypeFactory := dbng.NewBaseResourceTypeFactory(dbngConn)
+	resourceInstanceFactory := resource.NewResourceInstanceFactory(dbResourceCacheFactory)
+	potatoFactory := potato.NewPotatoFactory(resourceInstanceFactory)
 	workerClient := cmd.constructWorkerPool(
 		logger,
 		sqlDB,
@@ -185,12 +188,13 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 		dbBaseResourceTypeFactory,
 		dbVolumeFactory,
 		dbWorkerFactory,
+		potatoFactory,
 	)
 
 	resourceFetcher := resourceFetcherFactory.FetcherFor(workerClient)
 	resourceFactory := resourceFactoryFactory.FactoryFor(workerClient)
 	teamDBFactory := db.NewTeamDBFactory(dbConn, bus, lockFactory)
-	engine := cmd.constructEngine(workerClient, resourceFetcher, resourceFactory, dbResourceCacheFactory, teamDBFactory)
+	engine := cmd.constructEngine(workerClient, resourceFetcher, resourceFactory, resourceInstanceFactory, teamDBFactory)
 
 	radarSchedulerFactory := pipelines.NewRadarSchedulerFactory(
 		resourceFactory,
@@ -684,6 +688,7 @@ func (cmd *ATCCommand) constructWorkerPool(
 	dbBaseResourceTypeFactory dbng.BaseResourceTypeFactory,
 	dbVolumeFactory dbng.VolumeFactory,
 	dbWorkerFactory dbng.WorkerFactory,
+	potatoFactory worker.PotatoFactory,
 ) worker.Client {
 	return worker.NewPool(
 		worker.NewDBWorkerProvider(
@@ -699,6 +704,7 @@ func (cmd *ATCCommand) constructWorkerPool(
 			dbVolumeFactory,
 			pipelineDBFactory,
 			dbWorkerFactory,
+			potatoFactory,
 		),
 	)
 }
@@ -822,14 +828,14 @@ func (cmd *ATCCommand) constructEngine(
 	workerClient worker.Client,
 	resourceFetcher resource.Fetcher,
 	resourceFactory resource.ResourceFactory,
-	dbResourceCacheFactory dbng.ResourceCacheFactory,
+	resourceInstanceFactory resource.ResourceInstanceFactory,
 	teamDBFactory db.TeamDBFactory,
 ) engine.Engine {
 	gardenFactory := exec.NewGardenFactory(
 		workerClient,
 		resourceFetcher,
 		resourceFactory,
-		dbResourceCacheFactory,
+		resourceInstanceFactory,
 	)
 
 	execV2Engine := engine.NewExecEngine(

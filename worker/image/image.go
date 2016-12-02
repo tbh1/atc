@@ -29,6 +29,7 @@ type image struct {
 	logger                lager.Logger
 	signals               <-chan os.Signal
 	imageResource         atc.ImageResource
+	potato                worker.Potato
 	workerID              worker.Identifier
 	workerMetadata        worker.Metadata
 	workerTags            atc.Tags
@@ -49,42 +50,7 @@ func (i *image) Fetch() (worker.Volume, io.ReadCloser, atc.Version, error) {
 		return nil, nil, nil, err
 	}
 
-	var resourceInstance resource.ResourceInstance
-
-	if i.workerID.BuildID != 0 {
-		resourceInstance = resource.NewBuildResourceInstance(
-			resource.ResourceType(i.imageResource.Type),
-			version,
-			i.imageResource.Source,
-			nil,
-			&dbng.Build{ID: i.workerID.BuildID},
-			&dbng.Pipeline{ID: i.workerMetadata.PipelineID},
-			i.customTypes,
-			i.dbResourceCacheFactory,
-		)
-	} else if i.workerID.ResourceID != 0 {
-		resourceInstance = resource.NewResourceResourceInstance(
-			resource.ResourceType(i.imageResource.Type),
-			version,
-			i.imageResource.Source,
-			nil,
-			&dbng.Resource{ID: i.workerID.ResourceID},
-			&dbng.Pipeline{ID: i.workerMetadata.PipelineID},
-			i.customTypes,
-			i.dbResourceCacheFactory,
-		)
-	} else {
-		resourceInstance = resource.NewResourceTypeResourceInstance(
-			resource.ResourceType(i.imageResource.Type),
-			version,
-			i.imageResource.Source,
-			nil,
-			&dbng.UsedResourceType{ID: i.workerID.ResourceTypeID},
-			&dbng.Pipeline{ID: i.workerMetadata.PipelineID},
-			i.customTypes,
-			i.dbResourceCacheFactory,
-		)
-	}
+	resourceInstance := i.potato.ResourceInstance(i.imageResource, version, i.customTypes)
 
 	err = i.imageFetchingDelegate.ImageVersionDetermined(
 		resourceInstance.ResourceCacheIdentifier(),

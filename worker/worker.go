@@ -103,6 +103,7 @@ type gardenWorker struct {
 	dbContainerFactory      DBContainerFactory
 	dbResourceCacheFactory  dbng.ResourceCacheFactory
 	dbResourceConfigFactory dbng.ResourceConfigFactory
+	potatoFactory           PotatoFactory
 
 	db       GardenWorkerDB
 	provider WorkerProvider
@@ -126,6 +127,7 @@ func NewGardenWorker(
 	dbContainerFactory DBContainerFactory,
 	dbResourceCacheFactory dbng.ResourceCacheFactory,
 	dbResourceConfigFactory dbng.ResourceConfigFactory,
+	potatoFactory PotatoFactory,
 	db GardenWorkerDB,
 	provider WorkerProvider,
 	clock clock.Clock,
@@ -145,6 +147,7 @@ func NewGardenWorker(
 		dbContainerFactory:      dbContainerFactory,
 		dbResourceCacheFactory:  dbResourceCacheFactory,
 		dbResourceConfigFactory: dbResourceConfigFactory,
+		potatoFactory:           potatoFactory,
 
 		db:                db,
 		provider:          provider,
@@ -246,12 +249,15 @@ func (worker *gardenWorker) CreateBuildContainer(
 	}
 
 	containerProvider := worker.containerProviderFactory.ContainerProviderFor(worker)
+
+	potato := worker.potatoFactory.NewBuildPotato(id.PlanID, id.BuildID, metadata.PipelineID)
 	return containerProvider.FindOrCreateContainer(
 		logger,
 		cancel,
 		creatingContainer,
 		delegate,
 		id,
+		potato,
 		metadata,
 		spec,
 		resourceTypes,
@@ -340,12 +346,14 @@ func (worker *gardenWorker) FindOrCreateResourceGetContainer(
 	}
 
 	containerProvider := worker.containerProviderFactory.ContainerProviderFor(worker)
+	potato := worker.potatoFactory.NewResourcePotato(id.ResourceID, metadata.PipelineID)
 	return containerProvider.FindOrCreateContainer(
 		logger,
 		cancel,
 		creatingContainer,
 		delegate,
 		id,
+		potato,
 		metadata,
 		spec,
 		resourceTypes,
@@ -393,7 +401,8 @@ func (worker *gardenWorker) CreateResourceCheckContainer(
 	}
 
 	containerProvider := worker.containerProviderFactory.ContainerProviderFor(worker)
-	return containerProvider.FindOrCreateContainer(logger, cancel, creatingContainer, delegate, id, metadata, spec, resourceTypes, map[string]string{})
+	potato := worker.potatoFactory.NewResourcePotato(id.ResourceID, metadata.PipelineID)
+	return containerProvider.FindOrCreateContainer(logger, cancel, creatingContainer, delegate, id, potato, metadata, spec, resourceTypes, map[string]string{})
 }
 
 func (worker *gardenWorker) CreateResourceTypeCheckContainer(
@@ -431,7 +440,8 @@ func (worker *gardenWorker) CreateResourceTypeCheckContainer(
 	}
 
 	containerProvider := worker.containerProviderFactory.ContainerProviderFor(worker)
-	return containerProvider.FindOrCreateContainer(logger, cancel, creatingContainer, delegate, id, metadata, spec, resourceTypes, map[string]string{})
+	potato := worker.potatoFactory.NewResourceTypePotato(id.ResourceTypeID, metadata.PipelineID)
+	return containerProvider.FindOrCreateContainer(logger, cancel, creatingContainer, delegate, id, potato, metadata, spec, resourceTypes, map[string]string{})
 }
 
 func (worker *gardenWorker) FindOrCreateContainerForIdentifier(

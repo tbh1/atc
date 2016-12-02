@@ -16,23 +16,23 @@ import (
 )
 
 type gardenFactory struct {
-	workerClient           worker.Client
-	resourceFetcher        resource.Fetcher
-	resourceFactory        resource.ResourceFactory
-	dbResourceCacheFactory dbng.ResourceCacheFactory
+	workerClient            worker.Client
+	resourceFetcher         resource.Fetcher
+	resourceFactory         resource.ResourceFactory
+	resourceInstanceFactory resource.ResourceInstanceFactory
 }
 
 func NewGardenFactory(
 	workerClient worker.Client,
 	resourceFetcher resource.Fetcher,
 	resourceFactory resource.ResourceFactory,
-	dbResourceCacheFactory dbng.ResourceCacheFactory,
+	resourceInstanceFactory resource.ResourceInstanceFactory,
 ) Factory {
 	return &gardenFactory{
-		workerClient:           workerClient,
-		resourceFetcher:        resourceFetcher,
-		resourceFactory:        resourceFactory,
-		dbResourceCacheFactory: dbResourceCacheFactory,
+		workerClient:            workerClient,
+		resourceFetcher:         resourceFetcher,
+		resourceFactory:         resourceFactory,
+		resourceInstanceFactory: resourceInstanceFactory,
 	}
 }
 
@@ -69,7 +69,7 @@ func (factory *gardenFactory) DependentGet(
 		resourceTypes,
 		containerSuccessTTL,
 		containerFailureTTL,
-		factory.dbResourceCacheFactory,
+		factory.resourceInstanceFactory,
 	)
 }
 
@@ -96,7 +96,7 @@ func (factory *gardenFactory) Get(
 		resourceConfig,
 		version,
 		params,
-		resource.NewBuildResourceInstance(
+		factory.resourceInstanceFactory.NewBuildResourceInstance(
 			resource.ResourceType(resourceConfig.Type),
 			version,
 			resourceConfig.Source,
@@ -104,7 +104,6 @@ func (factory *gardenFactory) Get(
 			&dbng.Build{ID: id.BuildID},
 			&dbng.Pipeline{ID: workerMetadata.PipelineID},
 			resourceTypes,
-			factory.dbResourceCacheFactory,
 		),
 		stepMetadata,
 		resource.Session{

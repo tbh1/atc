@@ -16,6 +16,7 @@ type ImageFactory interface {
 		logger lager.Logger,
 		cancel <-chan os.Signal,
 		imageResource atc.ImageResource,
+		potato Potato,
 		id Identifier,
 		metadata Metadata,
 		tags atc.Tags,

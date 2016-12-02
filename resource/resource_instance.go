@@ -23,15 +23,51 @@ type ResourceInstance interface {
 	ResourceCacheIdentifier() worker.ResourceCacheIdentifier
 }
 
-type buildResourceInstance struct {
-	resourceInstance
-	build                  *dbng.Build
-	pipeline               *dbng.Pipeline
-	resourceTypes          atc.ResourceTypes
+type ResourceInstanceFactory interface {
+	NewBuildResourceInstance(
+		resourceTypeName ResourceType,
+		version atc.Version,
+		source atc.Source,
+		params atc.Params,
+		build *dbng.Build,
+		pipeline *dbng.Pipeline,
+		resourceTypes atc.ResourceTypes,
+	) ResourceInstance
+
+	NewResourceResourceInstance(
+		resourceTypeName ResourceType,
+		version atc.Version,
+		source atc.Source,
+		params atc.Params,
+		resource *dbng.Resource,
+		pipeline *dbng.Pipeline,
+		resourceTypes atc.ResourceTypes,
+	) ResourceInstance
+
+	NewResourceTypeResourceInstance(
+		resourceTypeName ResourceType,
+		version atc.Version,
+		source atc.Source,
+		params atc.Params,
+		resourceType *dbng.UsedResourceType,
+		pipeline *dbng.Pipeline,
+		resourceTypes atc.ResourceTypes,
+	) ResourceInstance
+}
+
+type resourceInstanceFactory struct {
 	dbResourceCacheFactory dbng.ResourceCacheFactory
 }
 
-func NewBuildResourceInstance(
+func NewResourceInstanceFactory(
+	dbResourceCacheFactory dbng.ResourceCacheFactory,
+) ResourceInstanceFactory {
+	return &resourceInstanceFactory{
+		dbResourceCacheFactory: dbResourceCacheFactory,
+	}
+}
+
+func (f *resourceInstanceFactory) NewBuildResourceInstance(
 	resourceTypeName ResourceType,
 	version atc.Version,
 	source atc.Source,
@@ -39,7 +75,6 @@ func NewBuildResourceInstance(
 	build *dbng.Build,
 	pipeline *dbng.Pipeline,
 	resourceTypes atc.ResourceTypes,
-	dbResourceCacheFactory dbng.ResourceCacheFactory,
 ) ResourceInstance {
 	return &buildResourceInstance{
 		resourceInstance: resourceInstance{
@@ -51,8 +86,62 @@ func NewBuildResourceInstance(
 		build:                  build,
 		pipeline:               pipeline,
 		resourceTypes:          resourceTypes,
-		dbResourceCacheFactory: dbResourceCacheFactory,
+		dbResourceCacheFactory: f.dbResourceCacheFactory,
 	}
+}
+
+func (f *resourceInstanceFactory) NewResourceResourceInstance(
+	resourceTypeName ResourceType,
+	version atc.Version,
+	source atc.Source,
+	params atc.Params,
+	resource *dbng.Resource,
+	pipeline *dbng.Pipeline,
+	resourceTypes atc.ResourceTypes,
+) ResourceInstance {
+	return &resourceResourceInstance{
+		resourceInstance: resourceInstance{
+			resourceTypeName: resourceTypeName,
+			version:          version,
+			source:           source,
+			params:           params,
+		},
+		resource:               resource,
+		pipeline:               pipeline,
+		resourceTypes:          resourceTypes,
+		dbResourceCacheFactory: f.dbResourceCacheFactory,
+	}
+}
+
+func (f *resourceInstanceFactory) NewResourceTypeResourceInstance(
+	resourceTypeName ResourceType,
+	version atc.Version,
+	source atc.Source,
+	params atc.Params,
+	resourceType *dbng.UsedResourceType,
+	pipeline *dbng.Pipeline,
+	resourceTypes atc.ResourceTypes,
+) ResourceInstance {
+	return &resourceTypeResourceInstance{
+		resourceInstance: resourceInstance{
+			resourceTypeName: resourceTypeName,
+			version:          version,
+			source:           source,
+			params:           params,
+		},
+		resourceType:           resourceType,
+		pipeline:               pipeline,
+		resourceTypes:          resourceTypes,
+		dbResourceCacheFactory: f.dbResourceCacheFactory,
+	}
+}
+
+type buildResourceInstance struct {
+	resourceInstance
+	build                  *dbng.Build
+	pipeline               *dbng.Pipeline
+	resourceTypes          atc.ResourceTypes
+	dbResourceCacheFactory dbng.ResourceCacheFactory
 }
 
 func (bri buildResourceInstance) FindOrCreateOn(logger lager.Logger, workerClient worker.Client) (worker.Volume, error) {
@@ -114,30 +203,6 @@ type resourceResourceInstance struct {
 	dbResourceCacheFactory dbng.ResourceCacheFactory
 }
 
-func NewResourceResourceInstance(
-	resourceTypeName ResourceType,
-	version atc.Version,
-	source atc.Source,
-	params atc.Params,
-	resource *dbng.Resource,
-	pipeline *dbng.Pipeline,
-	resourceTypes atc.ResourceTypes,
-	dbResourceCacheFactory dbng.ResourceCacheFactory,
-) ResourceInstance {
-	return &resourceResourceInstance{
-		resourceInstance: resourceInstance{
-			resourceTypeName: resourceTypeName,
-			version:          version,
-			source:           source,
-			params:           params,
-		},
-		resource:               resource,
-		pipeline:               pipeline,
-		resourceTypes:          resourceTypes,
-		dbResourceCacheFactory: dbResourceCacheFactory,
-	}
-}
-
 func (rri resourceResourceInstance) FindOrCreateOn(logger lager.Logger, workerClient worker.Client) (worker.Volume, error) {
 	resourceCache, err := rri.dbResourceCacheFactory.FindOrCreateResourceCacheForResource(
 		logger,
@@ -195,30 +260,6 @@ type resourceTypeResourceInstance struct {
 	pipeline               *dbng.Pipeline
 	resourceTypes          atc.ResourceTypes
 	dbResourceCacheFactory dbng.ResourceCacheFactory
-}
-
-func NewResourceTypeResourceInstance(
-	resourceTypeName ResourceType,
-	version atc.Version,
-	source atc.Source,
-	params atc.Params,
-	resourceType *dbng.UsedResourceType,
-	pipeline *dbng.Pipeline,
-	resourceTypes atc.ResourceTypes,
-	dbResourceCacheFactory dbng.ResourceCacheFactory,
-) ResourceInstance {
-	return &resourceTypeResourceInstance{
-		resourceInstance: resourceInstance{
-			resourceTypeName: resourceTypeName,
-			version:          version,
-			source:           source,
-			params:           params,
-		},
-		resourceType:           resourceType,
-		pipeline:               pipeline,
-		resourceTypes:          resourceTypes,
-		dbResourceCacheFactory: dbResourceCacheFactory,
-	}
 }
 
 func (rtri resourceTypeResourceInstance) FindOrCreateOn(logger lager.Logger, workerClient worker.Client) (worker.Volume, error) {
