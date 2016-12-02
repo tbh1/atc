@@ -23,7 +23,6 @@ type WorkerDB interface {
 	Workers() ([]db.SavedWorker, error)
 	GetWorker(string) (db.SavedWorker, bool, error)
 	CreateContainer(container db.Container, ttl time.Duration, maxLifetime time.Duration, volumeHandles []string) (db.SavedContainer, error)
-	UpdateContainerTTLToBeRemoved(container db.Container, ttl time.Duration, maxLifetime time.Duration) (db.SavedContainer, error)
 	GetContainer(string) (db.SavedContainer, bool, error)
 	FindContainerByIdentifier(db.ContainerIdentifier) (db.SavedContainer, bool, error)
 	UpdateExpiresAtOnContainer(handle string, ttl time.Duration) error
@@ -37,7 +36,7 @@ var ErrDesiredWorkerNotRunning = errors.New("desired-garden-worker-is-not-known-
 
 type dbProvider struct {
 	logger                    lager.Logger
-	db                        WorkerDB
+	db                        GardenWorkerDB
 	dialer                    gconn.DialerFunc
 	retryBackOffFactory       retryhttp.BackOffFactory
 	imageFactory              ImageFactory

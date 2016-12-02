@@ -391,19 +391,6 @@ func (p *containerProvider) createGardenContainer(
 
 	id.ResourceTypeVersion = resourceTypeVersion
 
-	_, err = p.db.UpdateContainerTTLToBeRemoved(
-		db.Container{
-			ContainerIdentifier: db.ContainerIdentifier(id),
-			ContainerMetadata:   db.ContainerMetadata(metadata),
-		},
-		ContainerTTL,
-		p.maxContainerLifetime(metadata),
-	)
-	if err != nil {
-		logger.Error("failed-to-update-container-ttl", err)
-		return nil, nil, err
-	}
-
 	return gardenContainer, createdContainer, nil
 }
 

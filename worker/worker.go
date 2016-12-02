@@ -87,8 +87,8 @@ type DBContainerFactory interface {
 
 type GardenWorkerDB interface {
 	CreateContainer(container db.Container, ttl time.Duration, maxLifetime time.Duration, volumeHandles []string) (db.SavedContainer, error)
-	UpdateContainerTTLToBeRemoved(container db.Container, ttl time.Duration, maxLifetime time.Duration) (db.SavedContainer, error)
 	GetContainer(handle string) (db.SavedContainer, bool, error)
+	FindContainerByIdentifier(db.ContainerIdentifier) (db.SavedContainer, bool, error)
 	UpdateExpiresAtOnContainer(handle string, ttl time.Duration) error
 	ReapContainer(string) error
 	GetPipelineByID(pipelineID int) (db.SavedPipeline, error)
