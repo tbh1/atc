@@ -13,6 +13,7 @@ var _ = Describe("Check for new versions of resources", func() {
 	var checkErr error
 
 	Context("whose type is a base resource type", func() {
+
 		BeforeEach(func() {
 			source := atc.Source{
 				"versions": []map[string]string{
@@ -34,6 +35,10 @@ var _ = Describe("Check for new versions of resources", func() {
 
 		It("returns the proper versions", func() {
 			Expect(checkVersions).To(ConsistOf(atc.Version{"ref": "123"}, atc.Version{"beep": "boop"}))
+		})
+
+		It("runs everything on a COW volume", func() {
+
 		})
 
 	})

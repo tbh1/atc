@@ -20,7 +20,7 @@ func TestResource(t *testing.T) {
 	BeforeSuite(func() {
 		testWorker = cessna.Worker{
 			GardenAddr:       "10.244.16.2:7777",
-			BaggageclaimAddr: "10.244.16.2:7788",
+			BaggageclaimAddr: "http://10.244.16.2:7788",
 		}
 
 		baseResourceType = ResourceType{

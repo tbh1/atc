@@ -11,16 +11,12 @@ type resourceContainer struct {
 	resource Resource
 }
 
-type ResourceContainer interface {
-	Check() ([]atc.Version, error)
-}
-
 type checkRequest struct {
 	Source  atc.Source  `json:"source"`
 	Version atc.Version `json:"version"`
 }
 
-func (rc *resourceContainer) Check() ([]atc.Version, error) {
+func (rc *resourceContainer) RunCheck() ([]atc.Version, error) {
 	var versions []atc.Version
 
 	runner := rc.RunScript("/opt/resource/check", nil, checkRequest{rc.resource.Source, nil}, &versions)

@@ -5,6 +5,7 @@ import (
 	"github.com/concourse/atc"
 	"github.com/concourse/atc/cessna"
 	"github.com/concourse/atc/cessna/container"
+	"github.com/concourse/atc/cessna/volume"
 )
 
 type ResourceType struct {
@@ -18,6 +19,10 @@ type Resource struct {
 	logger       lager.Logger
 }
 
+type ResourceContainer interface {
+	RunCheck() ([]atc.Version, error)
+}
+
 func NewResource(resourceType ResourceType, source atc.Source) Resource {
 	return Resource{
 		ResourceType: resourceType,
@@ -27,20 +32,28 @@ func NewResource(resourceType ResourceType, source atc.Source) Resource {
 }
 
 func (r *Resource) Check(worker cessna.Worker, version *atc.Version) ([]atc.Version, error) {
-	//resource type rootfs stuff
-	resourceContainer, err := r.containerFor(worker)
+	resourceVolume, err := r.createCheckVolume(worker)
 	if err != nil {
 		return []atc.Version{}, err
 	}
 
-	return resourceContainer.Check()
+	resourceContainer, err := r.createContainer(worker, resourceVolume)
+	if err != nil {
+		return []atc.Version{}, err
+	}
+
+	return resourceContainer.RunCheck()
 }
 
-func (r *Resource) containerFor(worker cessna.Worker) (ResourceContainer, error) {
+func (r *Resource) createCheckVolume(worker cessna.Worker) (cessna.Volume, error) {
+	provider := volume.NewProvider(worker)
+	return provider.COWFromRootFS(r.ResourceType.RootFSPath)
+}
 
-	cs := container.NewSandwich(r.ResourceType.RootFSPath)
+func (r *Resource) createContainer(worker cessna.Worker, volume cessna.Volume) (ResourceContainer, error) {
+	provider := container.NewProvider(worker)
+	gardenContainer, err := provider.CreateContainer(volume.Path())
 
-	gardenContainer, err := cs.ContainerOn(worker)
 	if err != nil {
 		r.logger.Error("failed-to-create-container-for-resource", err)
 		return nil, err
