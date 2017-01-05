@@ -40,14 +40,13 @@ func (err ErrScriptFailed) Error() string {
 	return msg
 }
 
-func (rc *Wrapper) RunScript(
+func (cw *Wrapper) RunScript(
 	path string,
 	args []string,
 	input interface{},
 	output interface{},
 ) ifrit.Runner {
 	return ifrit.RunFunc(func(signals <-chan os.Signal, ready chan<- struct{}) error {
-
 		request, err := json.Marshal(input)
 		if err != nil {
 			return err
@@ -64,7 +63,7 @@ func (rc *Wrapper) RunScript(
 
 		var process garden.Process
 
-		process, err = rc.Container.Run(garden.ProcessSpec{
+		process, err = cw.Container.Run(garden.ProcessSpec{
 			Path: path,
 			Args: args,
 		}, processIO)
@@ -101,7 +100,7 @@ func (rc *Wrapper) RunScript(
 			return json.Unmarshal(stdout.Bytes(), output)
 
 		case <-signals:
-			rc.Container.Stop(false)
+			cw.Container.Stop(false)
 			<-processExited
 			return ErrAborted
 		}

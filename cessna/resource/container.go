@@ -31,10 +31,10 @@ func (rc *resourceContainer) RunCheck() ([]atc.Version, error) {
 	return versions, nil
 }
 
-// func (rc *resourceContainer) In() []Version {
+// func (rc *resourceContainer) In() {
 //
 // }
 //
-// func (rc *resourceContainer) Out() []Version {
+// func (rc *resourceContainer) Out() {
 //
 // }

@@ -11,24 +11,42 @@ import (
 	"code.cloudfoundry.org/garden/client/connection"
 )
 
-type Worker struct {
-	GardenAddr       string
-	BaggageclaimAddr string
+func NewWorker(gardenAddr string, baggageclaimAddr string) Worker {
+	return &worker{
+		gardenAddr:       gardenAddr,
+		baggageclaimAddr: baggageclaimAddr,
+	}
 }
 
-func (w *Worker) GardenClient() garden.Client {
-	return gclient.New(connection.New("tcp", w.GardenAddr))
+type worker struct {
+	gardenAddr       string
+	baggageclaimAddr string
 }
 
-func (w *Worker) BaggageClaimClient() baggageclaim.Client {
-	return bclient.New(w.BaggageclaimAddr, http.DefaultTransport)
+func (w *worker) GardenClient() garden.Client {
+	return gclient.New(connection.New("tcp", w.gardenAddr))
 }
+
+func (w *worker) BaggageClaimClient() baggageclaim.Client {
+	return bclient.New(w.baggageclaimAddr, http.DefaultTransport)
+}
+
+//go:generate counterfeiter . Worker
+
+type Worker interface {
+	GardenClient() garden.Client
+	BaggageClaimClient() baggageclaim.Client
+}
+
+//go:generate counterfeiter . Container
 
 type Container interface {
 	garden.Container
 }
 
+//go:generate counterfeiter . Volume
+
 type Volume interface {
 	baggageclaim.Volume
-	COWify(properties baggageclaim.VolumeProperties, privileged bool) (Volume, error)
+	COWify(privileged bool) (Volume, error)
 }
