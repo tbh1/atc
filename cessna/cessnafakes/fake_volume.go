@@ -91,10 +91,9 @@ type FakeVolume struct {
 	destroyReturns     struct {
 		result1 error
 	}
-	COWifyStub        func(properties baggageclaim.VolumeProperties, privileged bool) (cessna.Volume, error)
+	COWifyStub        func(privileged bool) (cessna.Volume, error)
 	cOWifyMutex       sync.RWMutex
 	cOWifyArgsForCall []struct {
-		properties baggageclaim.VolumeProperties
 		privileged bool
 	}
 	cOWifyReturns struct {
@@ -418,16 +417,15 @@ func (fake *FakeVolume) DestroyReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeVolume) COWify(properties baggageclaim.VolumeProperties, privileged bool) (cessna.Volume, error) {
+func (fake *FakeVolume) COWify(privileged bool) (cessna.Volume, error) {
 	fake.cOWifyMutex.Lock()
 	fake.cOWifyArgsForCall = append(fake.cOWifyArgsForCall, struct {
-		properties baggageclaim.VolumeProperties
 		privileged bool
-	}{properties, privileged})
-	fake.recordInvocation("COWify", []interface{}{properties, privileged})
+	}{privileged})
+	fake.recordInvocation("COWify", []interface{}{privileged})
 	fake.cOWifyMutex.Unlock()
 	if fake.COWifyStub != nil {
-		return fake.COWifyStub(properties, privileged)
+		return fake.COWifyStub(privileged)
 	} else {
 		return fake.cOWifyReturns.result1, fake.cOWifyReturns.result2
 	}
@@ -439,10 +437,10 @@ func (fake *FakeVolume) COWifyCallCount() int {
 	return len(fake.cOWifyArgsForCall)
 }
 
-func (fake *FakeVolume) COWifyArgsForCall(i int) (baggageclaim.VolumeProperties, bool) {
+func (fake *FakeVolume) COWifyArgsForCall(i int) bool {
 	fake.cOWifyMutex.RLock()
 	defer fake.cOWifyMutex.RUnlock()
-	return fake.cOWifyArgsForCall[i].properties, fake.cOWifyArgsForCall[i].privileged
+	return fake.cOWifyArgsForCall[i].privileged
 }
 
 func (fake *FakeVolume) COWifyReturns(result1 cessna.Volume, result2 error) {

@@ -25,7 +25,7 @@ var _ = Describe("Provider", func() {
 
 		BeforeEach(func() {
 			rootFsPath = "/some/rootfs/path/"
-			testProvider.CreateContainer(rootFsPath)
+			testProvider.CreateContainer(rootFsPath, nil)
 		})
 
 		It("Creates a container using the worker's garden client", func() {

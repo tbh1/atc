@@ -21,6 +21,14 @@ func NewProvider(worker cessna.Worker) Provider {
 	}
 }
 
+func (p *Provider) CreateEmptyVolume(handle string, privileged bool) (cessna.Volume, error) {
+	spec := baggageclaim.VolumeSpec{
+		Strategy:   baggageclaim.EmptyStrategy{},
+		Privileged: privileged,
+	}
+	return p.createVolume(handle, spec)
+}
+
 func (p *Provider) ImportRootFS(path string, privileged bool) (cessna.Volume, error) {
 	spec := baggageclaim.VolumeSpec{
 		Strategy: baggageclaim.ImportStrategy{

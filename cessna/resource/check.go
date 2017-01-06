@@ -2,14 +2,8 @@ package resource
 
 import (
 	"github.com/concourse/atc"
-	"github.com/concourse/atc/cessna/container"
 	"github.com/tedsuo/ifrit"
 )
-
-type resourceContainer struct {
-	container.Wrapper
-	resource Resource
-}
 
 type checkRequest struct {
 	Source  atc.Source  `json:"source"`
