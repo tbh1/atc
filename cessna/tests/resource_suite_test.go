@@ -23,21 +23,19 @@ var (
 	testBaseResource Resource
 	testWorker       cessna.Worker
 	baseResourceType ResourceType
-	workerIp         = "10.244.16.2"
-	tarPath          = "./echo-resource-rootfs.tar"
+	workerIp         string
+	tarPath          string
 )
 
 var _ = BeforeSuite(func() {
-	if os.Getenv("WORKER_IP") != "" {
-		workerIp = os.Getenv("WORKER_IP")
-	}
+	var found bool
 
-	if os.Getenv("TAR_PATH") != "" {
-		tarPath = os.Getenv("TAR_PATH")
-	}
+	workerIp, found = os.LookupEnv("WORKER_IP")
 
-	Expect(workerIp).ToNot(BeEmpty())
-	Expect(tarPath).ToNot(BeEmpty())
+	Expect(found).To(BeTrue(), "Must set WORKER_IP")
+
+	tarPath, found = os.LookupEnv("TAR_PATH")
+	Expect(found).To(BeTrue(), "Must set TAR_PATH")
 
 	testWorker = cessna.NewWorker(fmt.Sprintf("%s:7777", workerIp), fmt.Sprintf("http://%s:7788", workerIp))
 
