@@ -27,10 +27,11 @@ var _ = Describe("Get version of a resource", func() {
 			}
 
 			testBaseResource = NewResource(baseResourceType, source)
+			resourceManager = NewResourceManagerFor(testWorker)
 		})
 
 		JustBeforeEach(func() {
-			getVolume, getErr = testBaseResource.Get(testWorker, &atc.Version{"beep": "boop"}, nil)
+			getVolume, getErr = resourceManager.Get(testBaseResource, &atc.Version{"beep": "boop"}, nil)
 		})
 
 		It("runs the get script", func() {

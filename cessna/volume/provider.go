@@ -14,8 +14,8 @@ type Provider struct {
 	logger             lager.Logger
 }
 
-func NewProvider(worker cessna.Worker) Provider {
-	return Provider{
+func NewProvider(worker cessna.Worker) *Provider {
+	return &Provider{
 		baggageclaimClient: worker.BaggageClaimClient(),
 		logger:             lager.NewLogger("worker-volume-provider"),
 	}

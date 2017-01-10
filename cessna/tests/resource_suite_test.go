@@ -25,6 +25,8 @@ var (
 	baseResourceType ResourceType
 	workerIp         string
 	tarPath          string
+
+	resourceManager *ResourceManager
 )
 
 var _ = BeforeSuite(func() {

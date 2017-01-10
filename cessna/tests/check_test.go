@@ -14,7 +14,7 @@ import (
 	"github.com/onsi/gomega/gbytes"
 )
 
-var _ = Describe("Check for new versions of resources", func() {
+var _ = FDescribe("Check for new versions of resources", func() {
 
 	var checkVersions []atc.Version
 	var checkErr error
@@ -30,13 +30,15 @@ var _ = Describe("Check for new versions of resources", func() {
 			}
 
 			testBaseResource = NewResource(baseResourceType, source)
+
+			resourceManager = NewResourceManagerFor(testWorker)
 		})
 
 		JustBeforeEach(func() {
-			checkVersions, checkErr = testBaseResource.Check(testWorker, nil)
+			checkVersions, checkErr = resourceManager.Check(testBaseResource, nil)
 		})
 
-		It("runs the check script", func() {
+		FIt("runs the check script", func() {
 			Expect(checkErr).ShouldNot(HaveOccurred())
 		})
 

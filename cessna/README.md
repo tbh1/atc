@@ -6,4 +6,4 @@
 - Ensure you have a running concourse (e.g. on bosh-lite) and take note of the IP address of a worker
 - Run
 
-      env WORKER_IP=<worker-ip> TAR_PATH=<path/to/rootfs.tar> ginkgo -r -p cessna
+      env WORKER_IP=<worker-ip> TAR_PATH=<path/to/rootfs.tar> ginkgo -resource -p cessna

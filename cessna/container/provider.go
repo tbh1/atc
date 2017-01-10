@@ -18,7 +18,7 @@ func NewProvider(worker cessna.Worker) *Provider {
 	}
 }
 
-func (p *Provider) CreateContainer(rootFSPath string, bindMounts *[]garden.BindMount) (cessna.Container, error) {
+func (p *Provider) CreateContainer(rootFSPath string, bindMounts *[]garden.BindMount) (garden.Container, error) {
 
 	gardenSpec := garden.ContainerSpec{
 		Privileged: false,
