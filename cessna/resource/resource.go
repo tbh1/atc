@@ -5,8 +5,8 @@ import (
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/atc"
 	"github.com/concourse/atc/cessna"
-	"github.com/concourse/atc/cessna/container"
-	"github.com/concourse/atc/cessna/volume"
+	"github.com/concourse/baggageclaim"
+	"github.com/tedsuo/ifrit"
 )
 
 type ResourceType struct {
@@ -17,57 +17,147 @@ type ResourceType struct {
 type Resource struct {
 	ResourceType ResourceType
 	Source       atc.Source
-	logger       lager.Logger
-}
-
-type ResourceContainer interface {
-	RunCheck() ([]atc.Version, error)
-	RunGet(atc.Version, atc.Params, cessna.Volume) (versionResult, error)
-}
-
-type resourceContainer struct {
-	container.Wrapper
-	resource Resource
 }
 
 func NewResource(resourceType ResourceType, source atc.Source) Resource {
 	return Resource{
 		ResourceType: resourceType,
 		Source:       source,
-		logger:       lager.NewLogger("resource"),
 	}
 }
 
-func (r *Resource) Check(worker cessna.Worker, version *atc.Version) ([]atc.Version, error) {
-	resourceContainer, err := r.createContainer(worker, nil)
-	if err != nil {
-		return []atc.Version{}, err
-	}
-
-	return resourceContainer.RunCheck()
+type ResourceManager struct {
+	Logger lager.Logger
+	Worker *cessna.Worker
 }
 
-func (r *Resource) Get(worker cessna.Worker, version *atc.Version, params atc.Params) (cessna.Volume, error) {
-
-	volumeForGet, err := r.createCacheVolume(worker)
-	if err != nil {
-		return nil, err
+func NewResourceManagerFor(worker *cessna.Worker) *ResourceManager {
+	return &ResourceManager{
+		Logger: lager.NewLogger("resourcemanager"),
+		Worker: worker,
 	}
+}
 
-	bindMounts := &[]garden.BindMount{
-		garden.BindMount{
-			SrcPath: volumeForGet.Path(),
-			DstPath: "/tmp/resource/get",
-			Mode:    garden.BindMountModeRW,
+func (r *ResourceManager) Check(resource Resource, version *atc.Version) ([]atc.Version, error) {
+	// Import RootFS into Volume
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.ImportStrategy{
+			Path: resource.ResourceType.RootFSPath,
 		},
+		Privileged: true,
 	}
+	handle := "foobar"
 
-	resourceContainer, err := r.createContainer(worker, bindMounts)
+	parentVolume, err := r.Worker.BaggageClaimClient().CreateVolume(r.Logger.Session("create-parent-volume"), handle, spec)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = resourceContainer.RunGet(*version, params, volumeForGet)
+	// COW of RootFS Volume
+	spec = baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: parentVolume,
+		},
+		Privileged: false,
+	}
+	rootFSVolume, err := r.Worker.BaggageClaimClient().CreateVolume(r.Logger.Session("create-cow-rootfs-volume"), parentVolume.Handle(), spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Turn RootFS COW into Container
+	gardenSpec := garden.ContainerSpec{
+		Privileged: false,
+		RootFSPath: rootFSVolume.Path(),
+	}
+
+	gardenContainer, err := r.Worker.GardenClient().Create(gardenSpec)
+	if err != nil {
+		r.Logger.Error("failed-to-create-gardenContainer-in-garden", err)
+		return nil, err
+	}
+
+	runner, err := NewCheckCommandProcess(gardenContainer, resource, version)
+	if err != nil {
+		return nil, err
+	}
+
+	checking := ifrit.Invoke(runner)
+
+	err = <-checking.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return runner.Response()
+}
+
+func (r *ResourceManager) Get(resource Resource, version *atc.Version, params atc.Params) (baggageclaim.Volume, error) {
+	// Import RootFS into Volume
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.ImportStrategy{
+			Path: resource.ResourceType.RootFSPath,
+		},
+		Privileged: true,
+	}
+	handle := "foobar"
+
+	parentVolume, err := r.Worker.BaggageClaimClient().CreateVolume(r.Logger.Session("create-parent-volume"), handle, spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// COW of RootFS Volume
+	spec = baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: parentVolume,
+		},
+		Privileged: false,
+	}
+	rootFSVolume, err := r.Worker.BaggageClaimClient().CreateVolume(r.Logger.Session("create-cow-rootfs-volume"), parentVolume.Handle(), spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Empty Volume for Get
+	spec = baggageclaim.VolumeSpec{
+		Strategy:   baggageclaim.EmptyStrategy{},
+		Privileged: false,
+	}
+	volumeForGet, err := r.Worker.BaggageClaimClient().CreateVolume(r.Logger.Session("create-empty-volume-for-get"), "foobar3", spec)
+	if err != nil {
+		return nil, err
+
+	}
+
+	// Turn into Container
+	mount := garden.BindMount{
+		SrcPath: volumeForGet.Path(),
+		DstPath: "/tmp/resource/get",
+		Mode:    garden.BindMountModeRW,
+	}
+	bindMounts := []garden.BindMount{mount}
+
+	gardenSpec := garden.ContainerSpec{
+		Privileged: false,
+		RootFSPath: rootFSVolume.Path(),
+		BindMounts: bindMounts,
+	}
+
+	container, err := r.Worker.GardenClient().Create(gardenSpec)
+	if err != nil {
+		r.Logger.Error("failed-to-create-gardenContainer-in-garden", err)
+		return nil, err
+	}
+
+	runner, err := NewGetCommandProcess(container, mount, resource, version, params)
+	if err != nil {
+		r.Logger.Error("failed-to-create-get-command-process", err)
+	}
+
+	getting := ifrit.Invoke(runner)
+
+	err = <-getting.Wait()
 	if err != nil {
 		return nil, err
 	}
@@ -75,31 +165,30 @@ func (r *Resource) Get(worker cessna.Worker, version *atc.Version, params atc.Pa
 	return volumeForGet, nil
 }
 
-func (r *Resource) createResourceVolume(worker cessna.Worker) (cessna.Volume, error) {
-	provider := volume.NewProvider(worker)
-	return provider.COWFromRootFS(r.ResourceType.RootFSPath)
+type CheckRequest struct {
+	Source  atc.Source  `json:"source"`
+	Version atc.Version `json:"version"`
 }
 
-func (r *Resource) createCacheVolume(worker cessna.Worker) (cessna.Volume, error) {
-	provider := volume.NewProvider(worker)
-	return provider.CreateEmptyVolume("123", false)
+type CheckResponse []atc.Version
+
+type InRequest struct {
+	Source  atc.Source  `json:"source"`
+	Params  atc.Params  `json:"params"`
+	Version atc.Version `json:"version"`
 }
 
-func (r *Resource) createContainer(worker cessna.Worker, bindMounts *[]garden.BindMount) (ResourceContainer, error) {
-	//IDEA:	maybe we need this separate from create container..
-	volume, err := r.createResourceVolume(worker)
-	if err != nil {
-		return nil, err
-	}
-	//IDEA //
+type InResponse struct {
+	Version  atc.Version         `json:"version"`
+	Metadata []atc.MetadataField `json:"metadata,omitempty"`
+}
 
-	provider := container.NewProvider(worker)
-	gardenContainer, err := provider.CreateContainer(volume.Path(), bindMounts)
+type OutRequest struct {
+	Source atc.Source `json:"source"`
+	Params atc.Params `json:"params"`
+}
 
-	if err != nil {
-		r.logger.Error("failed-to-create-container-for-resource", err)
-		return nil, err
-	}
-
-	return &resourceContainer{container.Wrapper{Container: gardenContainer}, *r}, nil
+type OutResponse struct {
+	Version  atc.Version         `json:"version"`
+	Metadata []atc.MetadataField `json:"metadata,omitempty"`
 }

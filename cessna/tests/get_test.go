@@ -5,15 +5,15 @@ import (
 	"io/ioutil"
 
 	"github.com/concourse/atc"
-	"github.com/concourse/atc/cessna"
 	. "github.com/concourse/atc/cessna/resource"
+	"github.com/concourse/baggageclaim"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Get version of a resource", func() {
 
-	var getVolume cessna.Volume
+	var getVolume baggageclaim.Volume
 	var getErr error
 
 	Context("whose type is a base resource type", func() {
@@ -27,10 +27,11 @@ var _ = Describe("Get version of a resource", func() {
 			}
 
 			testBaseResource = NewResource(baseResourceType, source)
+			resourceManager = NewResourceManagerFor(testWorker)
 		})
 
 		JustBeforeEach(func() {
-			getVolume, getErr = testBaseResource.Get(testWorker, &atc.Version{"beep": "boop"}, nil)
+			getVolume, getErr = resourceManager.Get(testBaseResource, &atc.Version{"beep": "boop"}, nil)
 		})
 
 		It("runs the get script", func() {

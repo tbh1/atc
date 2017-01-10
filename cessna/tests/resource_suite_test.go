@@ -21,10 +21,12 @@ import (
 
 var (
 	testBaseResource Resource
-	testWorker       cessna.Worker
+	testWorker       *cessna.Worker
 	baseResourceType ResourceType
 	workerIp         string
 	tarPath          string
+
+	resourceManager *ResourceManager
 )
 
 var _ = BeforeSuite(func() {

@@ -1,34 +1,65 @@
 package resource
 
 import (
+	"bytes"
+	"encoding/json"
+
+	"code.cloudfoundry.org/garden"
 	"github.com/concourse/atc"
-	"github.com/tedsuo/ifrit"
+	"github.com/concourse/atc/cessna"
 )
 
-type checkRequest struct {
-	Source  atc.Source  `json:"source"`
-	Version atc.Version `json:"version"`
-}
+func NewCheckCommandProcess(container garden.Container, resource Resource, version *atc.Version) (*checkCommandProcess, error) {
+	p := &cessna.ContainerProcess{
+		Container: container,
+		ProcessSpec: garden.ProcessSpec{
+			Path: "/opt/resource/check",
+		},
+	}
 
-func (rc *resourceContainer) RunCheck() ([]atc.Version, error) {
-	var versions []atc.Version
+	i := CheckRequest{
+		Source:  resource.Source,
+	}
 
-	runner := rc.RunScript("/opt/resource/check", nil, checkRequest{rc.resource.Source, nil}, &versions)
+	if version != nil {
+		i.Version = *version
+	}
 
-	checking := ifrit.Invoke(runner)
-
-	err := <-checking.Wait()
+	input, err := json.Marshal(i)
 	if err != nil {
 		return nil, err
 	}
 
-	return versions, nil
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+
+	p.ProcessIO.Stdin = bytes.NewBuffer(input)
+	p.ProcessIO.Stdout = &stdout
+	p.ProcessIO.Stderr = &stderr
+
+	return &checkCommandProcess{
+		ContainerProcess: p,
+		out:              &stdout,
+		err:              &stderr,
+	}, nil
 }
 
-// func (rc *resourceContainer) In() {
-//
-// }
-//
-// func (rc *resourceContainer) Out() {
-//
-// }
+type checkCommandProcess struct {
+	*cessna.ContainerProcess
+
+	out *bytes.Buffer
+	err *bytes.Buffer
+}
+
+func (c *checkCommandProcess) Response() (CheckResponse, error) {
+	var o CheckResponse
+
+	err := json.NewDecoder(c.out).Decode(&o)
+	if err != nil {
+		return nil, err
+	}
+
+	return o, nil
+}

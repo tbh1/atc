@@ -1,41 +1,67 @@
 package resource
 
 import (
+	"bytes"
+	"encoding/json"
+
+	"code.cloudfoundry.org/garden"
 	"github.com/concourse/atc"
 	"github.com/concourse/atc/cessna"
-	"github.com/tedsuo/ifrit"
 )
 
-type getRequest struct {
-	Source  atc.Source  `json:"source"`
-	Params  atc.Params  `json:"params,omitempty"`
-	Version atc.Version `json:"version,omitempty"`
-}
-
-type versionResult struct {
-	Version  atc.Version         `json:"version"`
-	Metadata []atc.MetadataField `json:"metadata,omitempty"`
-}
-
-func (rc *resourceContainer) RunGet(version atc.Version, params atc.Params, volume cessna.Volume) (versionResult, error) {
-	var vr versionResult
-
-	runner := rc.RunScript("/opt/resource/in", []string{"/tmp/resource/get"}, getRequest{rc.resource.Source, params, version}, &vr)
-
-	getting := ifrit.Invoke(runner)
-
-	err := <-getting.Wait()
-	if err != nil {
-		return versionResult{}, err
+func NewGetCommandProcess(container garden.Container, mount garden.BindMount, resource Resource, version *atc.Version, params atc.Params) (*getCommandProcess, error) {
+	p := &cessna.ContainerProcess{
+		Container: container,
+		ProcessSpec: garden.ProcessSpec{
+			Path: "/opt/resource/in",
+			Args: []string{mount.DstPath},
+		},
 	}
 
-	return vr, nil
+	i := InRequest{
+		Source:  resource.Source,
+		Params:  params,
+	}
+
+	if version != nil {
+		i.Version = *version
+	}
+
+	input, err := json.Marshal(i)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+
+	p.ProcessIO.Stdin = bytes.NewBuffer(input)
+	p.ProcessIO.Stdout = &stdout
+	p.ProcessIO.Stderr = &stderr
+
+	return &getCommandProcess{
+		ContainerProcess: p,
+		out:              &stdout,
+		err:              &stderr,
+	}, nil
 }
 
-// func (rc *resourceContainer) In() {
-//
-// }
-//
-// func (rc *resourceContainer) Out() {
-//
-// }
+type getCommandProcess struct {
+	*cessna.ContainerProcess
+
+	out *bytes.Buffer
+	err *bytes.Buffer
+}
+
+func (g *getCommandProcess) Response() (InResponse, error) {
+	var r InResponse
+
+	err := json.NewDecoder(g.out).Decode(&r)
+	if err != nil {
+		return InResponse{}, err
+	}
+
+	return r, nil
+}
