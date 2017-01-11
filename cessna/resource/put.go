@@ -4,13 +4,118 @@ import (
 	"bytes"
 	"encoding/json"
 
+	"archive/tar"
+	"os"
+	"path"
+
 	"code.cloudfoundry.org/garden"
+	"code.cloudfoundry.org/lager"
 	"github.com/concourse/atc"
 	"github.com/concourse/atc/cessna"
-	"os"
+	"github.com/concourse/baggageclaim"
+	"github.com/tedsuo/ifrit"
 )
 
-func NewPutCommandProcess(container garden.Container, resource Resource, params atc.Params, artifactsDirectory string) (*putCommandProcess, error) {
+type ResourcePut struct {
+	Resource
+	Params atc.Params
+}
+
+func (r ResourcePut) Put(logger lager.Logger, worker *cessna.Worker, artifacts NamedArtifacts) (OutResponse, error) {
+	handle := "foo"
+	parentVolume, err := r.ResourceType.RootFSVolumeFor(logger, handle, worker)
+	if err != nil {
+		return OutResponse{}, err
+	}
+
+	// COW of RootFS Volume
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: parentVolume,
+		},
+		Privileged: false,
+	}
+	rootFSVolume, err := worker.BaggageClaimClient().CreateVolume(logger, parentVolume.Handle(), spec)
+	if err != nil {
+		return OutResponse{}, err
+	}
+
+	// Turning artifacts into COWs
+	cowArtifacts := make(NamedArtifacts)
+
+	for name, volume := range artifacts {
+		spec = baggageclaim.VolumeSpec{
+			Strategy: baggageclaim.COWStrategy{
+				Parent: volume,
+			},
+			Privileged: false,
+		}
+		v, err := worker.BaggageClaimClient().CreateVolume(logger, volume.Handle(), spec)
+		if err != nil {
+			return OutResponse{}, err
+		}
+
+		cowArtifacts[name] = v
+	}
+
+	// Create bindmounts for those COWs
+	var bindMounts []garden.BindMount
+
+	baseDirectory := "/tmp/artifacts"
+	for name, volume := range cowArtifacts {
+		bindMounts = append(bindMounts, garden.BindMount{
+			SrcPath: volume.Path(),
+			DstPath: path.Join(baseDirectory, name),
+			Mode:    garden.BindMountModeRW,
+		})
+	}
+
+	// Create container
+	gardenSpec := garden.ContainerSpec{
+		Privileged: false,
+		RootFSPath: rootFSVolume.Path(),
+		BindMounts: bindMounts,
+	}
+
+	container, err := worker.GardenClient().Create(gardenSpec)
+	if err != nil {
+		logger.Error("failed-to-create-gardenContainer-in-garden", err)
+		return OutResponse{}, err
+	}
+
+	// Stream fake tar into container to make sure directory exists
+	// stream into baseDirectory
+	emptyTar := new(bytes.Buffer)
+
+	err = tar.NewWriter(emptyTar).Close()
+	if err != nil {
+		return OutResponse{}, err
+	}
+
+	err = container.StreamIn(garden.StreamInSpec{
+		Path:      baseDirectory,
+		TarStream: emptyTar,
+	})
+
+	// Create the PutProcess
+	runner, err := r.newPutCommandProcess(container, baseDirectory)
+	if err != nil {
+		logger.Error("failed-to-create-get-command-process", err)
+	}
+
+	// Run the PutProcess
+	putting := ifrit.Invoke(runner)
+
+	err = <-putting.Wait()
+	if err != nil {
+		return OutResponse{}, err
+	}
+
+	// Parse the PutProcess output
+	return runner.Response()
+}
+
+func (r ResourcePut) newPutCommandProcess(container garden.Container, artifactsDirectory string) (*putCommandProcess, error) {
 	p := &cessna.ContainerProcess{
 		Container: container,
 		ProcessSpec: garden.ProcessSpec{
@@ -20,8 +125,8 @@ func NewPutCommandProcess(container garden.Container, resource Resource, params 
 	}
 
 	i := OutRequest{
-		Source: resource.Source,
-		Params: params,
+		Source: r.Source,
+		Params: r.Params,
 	}
 
 	input, err := json.Marshal(i)

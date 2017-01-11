@@ -29,13 +29,14 @@ var _ = Describe("Check for new versions of resources", func() {
 				},
 			}
 
-			testBaseResource = NewResource(baseResourceType, source)
-
-			resourceManager = NewResourceManagerFor(testWorker)
+			testBaseResource = NewBaseResource(baseResourceType, source)
 		})
 
 		JustBeforeEach(func() {
-			checkVersions, checkErr = resourceManager.Check(testBaseResource, nil)
+			checkVersions, checkErr = ResourceCheck{
+				Resource: testBaseResource,
+				Version: nil,
+			}.Check(logger, testWorker)
 		})
 
 		It("runs the check script", func() {

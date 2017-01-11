@@ -30,18 +30,20 @@ var _ = Describe("Put a resource", func() {
 				},
 			}
 
-			getBaseResource = NewResource(baseResourceType, source)
-			resourceManager = NewResourceManagerFor(testWorker)
+			getBaseResource = NewBaseResource(baseResourceType, source)
 
-			getVolume, getErr = resourceManager.Get(getBaseResource, &atc.Version{"beep": "boop"}, nil)
+			getVolume, getErr = ResourceGet{Resource: getBaseResource, Version: atc.Version{"beep": "boop"}}.Get(logger, testWorker)
 
-			putBaseResource = NewResource(baseResourceType, source)
+			putBaseResource = NewBaseResource(baseResourceType, source)
 		})
 
 		JustBeforeEach(func() {
-			putResponse, putErr = resourceManager.Put(putBaseResource, atc.Params{
-				"path": "inputresource/version",
-			}, NamedArtifacts{
+			putResponse, putErr = ResourcePut{
+				Resource: putBaseResource,
+				Params: atc.Params{
+					"path": "inputresource/version",
+				},
+			}.Put(logger, testWorker, NamedArtifacts{
 				"inputresource": getVolume,
 			})
 		})

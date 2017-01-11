@@ -17,16 +17,17 @@ import (
 	bclient "github.com/concourse/baggageclaim/client"
 
 	"testing"
+	"code.cloudfoundry.org/lager/lagertest"
 )
 
 var (
 	testBaseResource Resource
 	testWorker       *cessna.Worker
-	baseResourceType ResourceType
+	baseResourceType BaseResourceType
 	workerIp         string
 	tarPath          string
 
-	resourceManager *ResourceManager
+	logger lager.Logger
 )
 
 var _ = BeforeSuite(func() {
@@ -45,11 +46,12 @@ var _ = BeforeSuite(func() {
 
 	Expect(err).ToNot(HaveOccurred())
 
-	baseResourceType = ResourceType{
+	baseResourceType = BaseResourceType{
 		RootFSPath: rootFSPath,
 		Name:       "echo",
 	}
 
+	logger = lagertest.NewTestLogger("resource-test")
 })
 
 func TestResource(t *testing.T) {

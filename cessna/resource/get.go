@@ -5,26 +5,98 @@ import (
 	"encoding/json"
 
 	"code.cloudfoundry.org/garden"
+	"code.cloudfoundry.org/lager"
 	"github.com/concourse/atc"
 	"github.com/concourse/atc/cessna"
+	"github.com/concourse/baggageclaim"
+	"github.com/tedsuo/ifrit"
 )
 
-func NewGetCommandProcess(container garden.Container, mount garden.BindMount, resource Resource, version *atc.Version, params atc.Params) (*getCommandProcess, error) {
+type ResourceGet struct {
+	Resource
+	Version atc.Version
+	Params  atc.Params
+}
+
+func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggageclaim.Volume, error) {
+	handle := "foo"
+	parentVolume, err := r.ResourceType.RootFSVolumeFor(logger, handle, worker)
+	if err != nil {
+		return nil, err
+	}
+
+	// COW of RootFS Volume
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: parentVolume,
+		},
+		Privileged: false,
+	}
+	rootFSVolume, err := worker.BaggageClaimClient().CreateVolume(logger, parentVolume.Handle(), spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Empty Volume for Get
+	spec = baggageclaim.VolumeSpec{
+		Strategy:   baggageclaim.EmptyStrategy{},
+		Privileged: false,
+	}
+	volumeForGet, err := worker.BaggageClaimClient().CreateVolume(logger, "foobar3", spec)
+	if err != nil {
+		return nil, err
+
+	}
+
+	// Turn into Container
+	mountPath := "/tmp/resource/get"
+	mount := garden.BindMount{
+		SrcPath: volumeForGet.Path(),
+		DstPath: mountPath,
+		Mode:    garden.BindMountModeRW,
+	}
+	bindMounts := []garden.BindMount{mount}
+
+	gardenSpec := garden.ContainerSpec{
+		Privileged: false,
+		RootFSPath: rootFSVolume.Path(),
+		BindMounts: bindMounts,
+	}
+
+	container, err := worker.GardenClient().Create(gardenSpec)
+	if err != nil {
+		logger.Error("failed-to-create-gardenContainer-in-garden", err)
+		return nil, err
+	}
+
+	runner, err := r.newGetCommandProcess(container, mountPath)
+	if err != nil {
+		logger.Error("failed-to-create-get-command-process", err)
+	}
+
+	getting := ifrit.Invoke(runner)
+
+	err = <-getting.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return volumeForGet, nil
+}
+
+func (r ResourceGet) newGetCommandProcess(container garden.Container, mountPath string) (*getCommandProcess, error) {
 	p := &cessna.ContainerProcess{
 		Container: container,
 		ProcessSpec: garden.ProcessSpec{
 			Path: "/opt/resource/in",
-			Args: []string{mount.DstPath},
+			Args: []string{mountPath},
 		},
 	}
 
 	i := InRequest{
-		Source:  resource.Source,
-		Params:  params,
-	}
-
-	if version != nil {
-		i.Version = *version
+		Source:  r.Source,
+		Params:  r.Params,
+		Version: r.Version,
 	}
 
 	input, err := json.Marshal(i)

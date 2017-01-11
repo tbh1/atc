@@ -1,11 +1,13 @@
 package resource
 
 import (
+	"code.cloudfoundry.org/lager"
 	"github.com/concourse/atc"
+	"github.com/concourse/atc/cessna"
 	"github.com/concourse/baggageclaim"
 )
 
-type ResourceType struct {
+type BaseResourceType struct {
 	RootFSPath string
 	Name       string
 }
@@ -15,11 +17,26 @@ type Resource struct {
 	Source       atc.Source
 }
 
-func NewResource(resourceType ResourceType, source atc.Source) Resource {
+type ResourceType interface {
+	RootFSVolumeFor(logger lager.Logger, handle string, worker *cessna.Worker) (baggageclaim.Volume, error)
+}
+
+func NewBaseResource(resourceType BaseResourceType, source atc.Source) Resource {
 	return Resource{
 		ResourceType: resourceType,
 		Source:       source,
 	}
+}
+
+func (r BaseResourceType) RootFSVolumeFor(logger lager.Logger, handle string, worker *cessna.Worker) (baggageclaim.Volume, error) {
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.ImportStrategy{
+			Path: r.RootFSPath,
+		},
+		Privileged: true,
+	}
+
+	return worker.BaggageClaimClient().CreateVolume(logger.Session("create-base-resource-type-rootfs-volume"), handle, spec)
 }
 
 type CheckRequest struct {

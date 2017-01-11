@@ -5,11 +5,65 @@ import (
 	"encoding/json"
 
 	"code.cloudfoundry.org/garden"
+	"code.cloudfoundry.org/lager"
 	"github.com/concourse/atc"
 	"github.com/concourse/atc/cessna"
+	"github.com/concourse/baggageclaim"
+	"github.com/tedsuo/ifrit"
 )
 
-func NewCheckCommandProcess(container garden.Container, resource Resource, version *atc.Version) (*checkCommandProcess, error) {
+type ResourceCheck struct {
+	Resource
+	Version *atc.Version
+}
+
+func (r ResourceCheck) Check(logger lager.Logger, worker *cessna.Worker) (CheckResponse, error) {
+	handle := "foo"
+	parentVolume, err := r.ResourceType.RootFSVolumeFor(logger, handle, worker)
+	if err != nil {
+		return nil, err
+	}
+
+	// COW of RootFS Volume
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: parentVolume,
+		},
+		Privileged: false,
+	}
+	rootFSVolume, err := worker.BaggageClaimClient().CreateVolume(logger, parentVolume.Handle(), spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Turn RootFS COW into Container
+	gardenSpec := garden.ContainerSpec{
+		Privileged: false,
+		RootFSPath: rootFSVolume.Path(),
+	}
+
+	gardenContainer, err := worker.GardenClient().Create(gardenSpec)
+	if err != nil {
+		logger.Error("failed-to-create-gardenContainer-in-garden", err)
+		return nil, err
+	}
+
+	runner, err := r.newCheckCommandProcess(gardenContainer)
+	if err != nil {
+		return nil, err
+	}
+
+	checking := ifrit.Invoke(runner)
+
+	err = <-checking.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return runner.Response()
+}
+
+func (r ResourceCheck) newCheckCommandProcess(container garden.Container) (*checkCommandProcess, error) {
 	p := &cessna.ContainerProcess{
 		Container: container,
 		ProcessSpec: garden.ProcessSpec{
@@ -18,11 +72,11 @@ func NewCheckCommandProcess(container garden.Container, resource Resource, versi
 	}
 
 	i := CheckRequest{
-		Source:  resource.Source,
+		Source: r.Source,
 	}
 
-	if version != nil {
-		i.Version = *version
+	if r.Version != nil {
+		i.Version = *r.Version
 	}
 
 	input, err := json.Marshal(i)
