@@ -115,7 +115,7 @@ var _ = Describe("ContainerCollector", func() {
 			BeforeEach(func() {
 				fakeContainer = new(dbngfakes.FakeCreatedContainer)
 				fakeGardenContainer = new(gardenfakes.FakeContainer)
-				fakeContainerProvider.FindHijackedContainersForDeletion([]dbng.CreatedContainer{fakeContainer}, nil)
+				fakeContainerProvider.FindHijackedContainersForDeletionReturns([]dbng.CreatedContainer{fakeContainer}, nil)
 			})
 
 			Context("when container still exists in garden", func() {

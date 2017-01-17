@@ -95,12 +95,14 @@ type createdContainer struct {
 	id         int
 	handle     string
 	workerName string
+	hijacked   bool
 	conn       Conn
 }
 
 func (container *createdContainer) ID() int            { return container.id }
 func (container *createdContainer) Handle() string     { return container.handle }
-func (container *createdContainer) WorkerName() string { return container.workername }
+func (container *createdContainer) WorkerName() string { return container.workerName }
+func (container *createdContainer) IsHijacked() bool   { return container.hijacked }
 
 func (container *createdContainer) Destroying() (DestroyingContainer, error) {
 	tx, err := container.conn.Begin()
@@ -195,11 +197,13 @@ type destroyingContainer struct {
 	id         int
 	handle     string
 	workerName string
+	hijacked   bool
 	conn       Conn
 }
 
 func (container *destroyingContainer) Handle() string     { return container.handle }
 func (container *destroyingContainer) WorkerName() string { return container.workerName }
+func (container *destroyingContainer) IsHijacked() bool   { return container.hijacked }
 
 func (container *destroyingContainer) Destroy() (bool, error) {
 	tx, err := container.conn.Begin()

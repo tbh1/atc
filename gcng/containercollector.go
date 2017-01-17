@@ -62,7 +62,7 @@ func (c *ContainerCollector) Run() error {
 		w, found := workersByName[hijackedContainer.WorkerName()]
 		if !found {
 			c.Logger.Info("worker-not-found", lager.Data{
-				"worker-name": container.WorkerName(),
+				"worker-name": hijackedContainer.WorkerName(),
 			})
 			continue
 		}
@@ -80,14 +80,14 @@ func (c *ContainerCollector) Run() error {
 			if _, ok := err.(garden.ContainerNotFoundError); ok {
 				c.Logger.Debug("hijacked-container-not-found-in-garden", lager.Data{
 					"worker": w,
-					"handle": container.Handle(),
+					"handle": hijackedContainer.Handle(),
 				})
 
-				err = hijackedContainer.Destroying()
+				_, err = hijackedContainer.Destroying()
 				if err != nil {
 					c.Logger.Error("failed-to-mark-container-as-destroying", err, lager.Data{
 						"worker": w,
-						"handle": container.Handle(),
+						"handle": hijackedContainer.Handle(),
 					})
 					continue
 				}
@@ -97,7 +97,7 @@ func (c *ContainerCollector) Run() error {
 
 			c.Logger.Error("failed-to-lookup-garden-container", err, lager.Data{
 				"worker": w,
-				"handle": container.Handle(),
+				"handle": hijackedContainer.Handle(),
 			})
 			continue
 		}
@@ -106,16 +106,16 @@ func (c *ContainerCollector) Run() error {
 		if err != nil {
 			c.Logger.Error("failed-to-set-grace-time-on-hijacked-container", err, lager.Data{
 				"worker": w,
-				"handle": container.Handle(),
+				"handle": hijackedContainer.Handle(),
 			})
 			continue
 		}
 
-		err = hijackedContainer.Destroying()
+		_, err = hijackedContainer.Destroying()
 		if err != nil {
 			c.Logger.Error("failed-to-mark-container-as-destroying", err, lager.Data{
 				"worker": w,
-				"handle": container.Handle(),
+				"handle": hijackedContainer.Handle(),
 			})
 			continue
 		}
@@ -157,10 +157,11 @@ func (c *ContainerCollector) Run() error {
 			continue
 		}
 
-		// if container.IsHijacked() {
-		// lookup
-		// if found continue
-		// }
+		if container.IsHijacked() {
+			found, err := gclient.Lookup(container.Handle())
+
+			// if found continue
+		}
 
 		err = gclient.Destroy(container.Handle())
 		if err != nil {
