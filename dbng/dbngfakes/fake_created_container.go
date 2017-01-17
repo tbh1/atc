@@ -27,6 +27,12 @@ type FakeCreatedContainer struct {
 		result1 dbng.DestroyingContainer
 		result2 error
 	}
+	MarkAsHijackedStub        func() error
+	markAsHijackedMutex       sync.RWMutex
+	markAsHijackedArgsForCall []struct{}
+	markAsHijackedReturns     struct {
+		result1 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -107,6 +113,31 @@ func (fake *FakeCreatedContainer) DestroyingReturns(result1 dbng.DestroyingConta
 	}{result1, result2}
 }
 
+func (fake *FakeCreatedContainer) MarkAsHijacked() error {
+	fake.markAsHijackedMutex.Lock()
+	fake.markAsHijackedArgsForCall = append(fake.markAsHijackedArgsForCall, struct{}{})
+	fake.recordInvocation("MarkAsHijacked", []interface{}{})
+	fake.markAsHijackedMutex.Unlock()
+	if fake.MarkAsHijackedStub != nil {
+		return fake.MarkAsHijackedStub()
+	} else {
+		return fake.markAsHijackedReturns.result1
+	}
+}
+
+func (fake *FakeCreatedContainer) MarkAsHijackedCallCount() int {
+	fake.markAsHijackedMutex.RLock()
+	defer fake.markAsHijackedMutex.RUnlock()
+	return len(fake.markAsHijackedArgsForCall)
+}
+
+func (fake *FakeCreatedContainer) MarkAsHijackedReturns(result1 error) {
+	fake.MarkAsHijackedStub = nil
+	fake.markAsHijackedReturns = struct {
+		result1 error
+	}{result1}
+}
+
 func (fake *FakeCreatedContainer) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -116,6 +147,8 @@ func (fake *FakeCreatedContainer) Invocations() map[string][][]interface{} {
 	defer fake.handleMutex.RUnlock()
 	fake.destroyingMutex.RLock()
 	defer fake.destroyingMutex.RUnlock()
+	fake.markAsHijackedMutex.RLock()
+	defer fake.markAsHijackedMutex.RUnlock()
 	return fake.invocations
 }
 

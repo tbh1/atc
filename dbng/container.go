@@ -87,6 +87,8 @@ type CreatedContainer interface {
 	ID() int
 	Handle() string
 	Destroying() (DestroyingContainer, error)
+	WorkerName() string
+	MarkAsHijacked() error
 }
 
 type createdContainer struct {
@@ -96,8 +98,9 @@ type createdContainer struct {
 	conn       Conn
 }
 
-func (container *createdContainer) ID() int        { return container.id }
-func (container *createdContainer) Handle() string { return container.handle }
+func (container *createdContainer) ID() int            { return container.id }
+func (container *createdContainer) Handle() string     { return container.handle }
+func (container *createdContainer) WorkerName() string { return container.workername }
 
 func (container *createdContainer) Destroying() (DestroyingContainer, error) {
 	tx, err := container.conn.Begin()
@@ -140,6 +143,44 @@ func (container *createdContainer) Destroying() (DestroyingContainer, error) {
 		workerName: container.workerName,
 		conn:       container.conn,
 	}, nil
+}
+
+func (container *createdContainer) MarkAsHijacked() error {
+	tx, err := container.conn.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	rows, err := psql.Update("containers").
+		Set("hijacked", true).
+		Where(sq.Eq{
+			"id":    container.id,
+			"state": ContainerStateCreated,
+		}).
+		RunWith(tx).
+		Exec()
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	affected, err := rows.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		panic("TESTME")
+		return nil
+	}
+
+	return nil
 }
 
 //go:generate counterfeiter . DestroyingContainer

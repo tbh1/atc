@@ -22,6 +22,13 @@ type FakeContainerProvider struct {
 		result1 []dbng.DestroyingContainer
 		result2 error
 	}
+	FindHijackedContainersForDeletionStub        func() ([]dbng.CreatedContainer, error)
+	findHijackedContainersForDeletionMutex       sync.RWMutex
+	findHijackedContainersForDeletionArgsForCall []struct{}
+	findHijackedContainersForDeletionReturns     struct {
+		result1 []dbng.CreatedContainer
+		result2 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -77,6 +84,32 @@ func (fake *FakeContainerProvider) FindContainersMarkedForDeletionReturns(result
 	}{result1, result2}
 }
 
+func (fake *FakeContainerProvider) FindHijackedContainersForDeletion() ([]dbng.CreatedContainer, error) {
+	fake.findHijackedContainersForDeletionMutex.Lock()
+	fake.findHijackedContainersForDeletionArgsForCall = append(fake.findHijackedContainersForDeletionArgsForCall, struct{}{})
+	fake.recordInvocation("FindHijackedContainersForDeletion", []interface{}{})
+	fake.findHijackedContainersForDeletionMutex.Unlock()
+	if fake.FindHijackedContainersForDeletionStub != nil {
+		return fake.FindHijackedContainersForDeletionStub()
+	} else {
+		return fake.findHijackedContainersForDeletionReturns.result1, fake.findHijackedContainersForDeletionReturns.result2
+	}
+}
+
+func (fake *FakeContainerProvider) FindHijackedContainersForDeletionCallCount() int {
+	fake.findHijackedContainersForDeletionMutex.RLock()
+	defer fake.findHijackedContainersForDeletionMutex.RUnlock()
+	return len(fake.findHijackedContainersForDeletionArgsForCall)
+}
+
+func (fake *FakeContainerProvider) FindHijackedContainersForDeletionReturns(result1 []dbng.CreatedContainer, result2 error) {
+	fake.FindHijackedContainersForDeletionStub = nil
+	fake.findHijackedContainersForDeletionReturns = struct {
+		result1 []dbng.CreatedContainer
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *FakeContainerProvider) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -84,6 +117,8 @@ func (fake *FakeContainerProvider) Invocations() map[string][][]interface{} {
 	defer fake.markContainersForDeletionMutex.RUnlock()
 	fake.findContainersMarkedForDeletionMutex.RLock()
 	defer fake.findContainersMarkedForDeletionMutex.RUnlock()
+	fake.findHijackedContainersForDeletionMutex.RLock()
+	defer fake.findHijackedContainersForDeletionMutex.RUnlock()
 	return fake.invocations
 }
 

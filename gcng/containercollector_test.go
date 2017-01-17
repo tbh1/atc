@@ -2,6 +2,7 @@ package gcng_test
 
 import (
 	"errors"
+	"time"
 
 	"github.com/concourse/atc/dbng"
 	"github.com/concourse/atc/gcng"
@@ -103,6 +104,50 @@ var _ = Describe("ContainerCollector", func() {
 
 		It("marks build containers for deletion", func() {
 			Expect(fakeContainerProvider.MarkContainersForDeletionCallCount()).To(Equal(1))
+		})
+
+		Context("when there are created containers in hijacked state", func() {
+			var (
+				fakeGardenContainer *gardenfakes.FakeContainer
+				fakeContainer       *dbngfakes.FakeCreatedContainer
+			)
+
+			BeforeEach(func() {
+				fakeContainer = new(dbngfakes.FakeCreatedContainer)
+				fakeGardenContainer = new(gardenfakes.FakeContainer)
+				fakeContainerProvider.FindHijackedContainersForDeletion([]dbng.CreatedContainer{fakeContainer}, nil)
+			})
+
+			Context("when container still exists in garden", func() {
+				BeforeEach(func() {
+					fakeContainer.HandleReturns("im-fake-and-still-hijacked")
+					fakeGardenClient.LookupReturns(fakeGardenContainer, nil)
+				})
+
+				It("tells garden to set the TTL to 5 Min", func() {
+					Expect(fakeGardenClient.LookupCallCount()).To(Equal(1))
+					lookupHandle := fakeGardenClient.LookupArgsForCall(1)
+					Expect(lookupHandle).To(Equal("im-fake-and-still-hijacked"))
+
+					Expect(fakeGardenContainer.SetGraceTimeCallCount()).To(Equal(1))
+					graceTime := fakeGardenContainer.SetGraceTimeArgsForCall(0)
+					Expect(graceTime).To(Equal(5 * time.Minute))
+				})
+
+				It("marks container as destroying in database", func() {
+					Expect(fakeContainer.DestroyingCallCount()).To(Equal(1))
+				})
+			})
+
+			Context("when container does not exist in garden", func() {
+				BeforeEach(func() {
+					fakeGardenClient.LookupReturns(nil, garden.ContainerNotFoundError{Handle: "im-fake-and-still-hijacked"})
+				})
+
+				It("deletes the container", func() {
+					Expect(fakeContainer.DestroyingCallCount()).To(Equal(1))
+				})
+			})
 		})
 
 		It("finds all containers in deleting state, tells garden to destroy it, and then removes it from the DB", func() {
