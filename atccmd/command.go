@@ -299,7 +299,7 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 	}
 
 	members := []grouper.Member{
-		{"drainer", drainer(drain)},
+		{"drainer", drainer{logger.Session("drain"), drain, bus}},
 
 		{"debug", http_server.New(
 			cmd.debugBindAddr(),
