@@ -323,8 +323,9 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 				sqlDB,
 				engine,
 			),
-			Interval: 10 * time.Second,
-			Clock:    clock.NewClock(),
+			ListenBus: bus,
+			Interval:  10 * time.Second,
+			Clock:     clock.NewClock(),
 		}},
 
 		{"baggage-collector", lockrunner.NewRunner(
