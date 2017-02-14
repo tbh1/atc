@@ -32,18 +32,18 @@ type Team interface {
 
 	CreateOneOffBuild() (Build, error)
 
-	SaveWorker(worker atc.Worker, ttl time.Duration) (*Worker, error)
+	SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error)
 
 	FindContainerByHandle(string) (CreatedContainer, bool, error)
 
-	FindResourceCheckContainer(*Worker, *UsedResourceConfig) (CreatingContainer, CreatedContainer, error)
-	CreateResourceCheckContainer(*Worker, *UsedResourceConfig) (CreatingContainer, error)
+	FindResourceCheckContainer(workerName string, resourceConfig *UsedResourceConfig) (CreatingContainer, CreatedContainer, error)
+	CreateResourceCheckContainer(workerName string, resourceConfig *UsedResourceConfig) (CreatingContainer, error)
 
-	FindResourceGetContainer(*Worker, *UsedResourceCache, string) (CreatingContainer, CreatedContainer, error)
-	CreateResourceGetContainer(*Worker, *UsedResourceCache, string) (CreatingContainer, error)
+	FindResourceGetContainer(workerName string, resourceConfig *UsedResourceCache, stepName string) (CreatingContainer, CreatedContainer, error)
+	CreateResourceGetContainer(workerName string, resourceConfig *UsedResourceCache, stepName string) (CreatingContainer, error)
 
-	FindBuildContainer(*Worker, int, atc.PlanID, ContainerMetadata) (CreatingContainer, CreatedContainer, error)
-	CreateBuildContainer(*Worker, int, atc.PlanID, ContainerMetadata) (CreatingContainer, error)
+	FindBuildContainer(workerName string, buildID int, planID atc.PlanID, meta ContainerMetadata) (CreatingContainer, CreatedContainer, error)
+	CreateBuildContainer(workerName string, buildID int, planID atc.PlanID, meta ContainerMetadata) (CreatingContainer, error)
 }
 
 type team struct {
@@ -55,17 +55,17 @@ type team struct {
 func (t *team) ID() int { return t.id }
 
 func (t *team) FindResourceCheckContainer(
-	worker *Worker,
+	workerName string,
 	resourceConfig *UsedResourceConfig,
 ) (CreatingContainer, CreatedContainer, error) {
 	return t.findContainer(map[string]interface{}{
-		"worker_name":        worker.Name,
+		"worker_name":        workerName,
 		"resource_config_id": resourceConfig.ID,
 	})
 }
 
 func (t *team) CreateResourceCheckContainer(
-	worker *Worker,
+	workerName string,
 	resourceConfig *UsedResourceConfig,
 ) (CreatingContainer, error) {
 	tx, err := t.conn.Begin()
@@ -81,7 +81,7 @@ func (t *team) CreateResourceCheckContainer(
 	}
 
 	brtID := t.findBaseResourceTypeID(resourceConfig)
-	wbrtID, err := t.findWorkerBaseResourceType(brtID, worker, tx)
+	wbrtID, err := t.findWorkerBaseResourceType(brtID, workerName, tx)
 
 	var containerID int
 	err = psql.Insert("containers").
@@ -95,7 +95,7 @@ func (t *team) CreateResourceCheckContainer(
 			"worker_base_resource_types_id",
 		).
 		Values(
-			worker.Name,
+			workerName,
 			resourceConfig.ID,
 			"check",
 			"",
@@ -123,7 +123,7 @@ func (t *team) CreateResourceCheckContainer(
 	return &creatingContainer{
 		id:         containerID,
 		handle:     handle.String(),
-		workerName: worker.Name,
+		workerName: workerName,
 		conn:       t.conn,
 	}, nil
 }
@@ -136,11 +136,11 @@ func (t *team) findBaseResourceTypeID(resourceConfig *UsedResourceConfig) *UsedB
 	}
 }
 
-func (t *team) findWorkerBaseResourceType(usedBaseResourceType *UsedBaseResourceType, worker *Worker, tx Tx) (*int, error) {
+func (t *team) findWorkerBaseResourceType(usedBaseResourceType *UsedBaseResourceType, workerName string, tx Tx) (*int, error) {
 	var wbrtID int
 
 	err := psql.Select("id").From("worker_base_resource_types").Where(sq.Eq{
-		"worker_name":           worker.Name,
+		"worker_name":           workerName,
 		"base_resource_type_id": usedBaseResourceType.ID,
 	}).RunWith(tx).QueryRow().Scan(&wbrtID)
 
@@ -152,19 +152,19 @@ func (t *team) findWorkerBaseResourceType(usedBaseResourceType *UsedBaseResource
 }
 
 func (t *team) FindResourceGetContainer(
-	worker *Worker,
+	workerName string,
 	resourceCache *UsedResourceCache,
 	stepName string,
 ) (CreatingContainer, CreatedContainer, error) {
 	return t.findContainer(map[string]interface{}{
-		"worker_name":       worker.Name,
+		"worker_name":       workerName,
 		"resource_cache_id": resourceCache.ID,
 		"step_name":         stepName,
 	})
 }
 
 func (t *team) CreateResourceGetContainer(
-	worker *Worker,
+	workerName string,
 	resourceCache *UsedResourceCache,
 	stepName string,
 ) (CreatingContainer, error) {
@@ -191,7 +191,7 @@ func (t *team) CreateResourceGetContainer(
 			"team_id",
 		).
 		Values(
-			worker.Name,
+			workerName,
 			resourceCache.ID,
 			"get",
 			stepName,
@@ -218,19 +218,19 @@ func (t *team) CreateResourceGetContainer(
 	return &creatingContainer{
 		id:         containerID,
 		handle:     handle.String(),
-		workerName: worker.Name,
+		workerName: workerName,
 		conn:       t.conn,
 	}, nil
 }
 
 func (t *team) FindBuildContainer(
-	worker *Worker,
+	workerName string,
 	buildID int,
 	planID atc.PlanID,
 	meta ContainerMetadata,
 ) (CreatingContainer, CreatedContainer, error) {
 	return t.findContainer(map[string]interface{}{
-		"worker_name": worker.Name,
+		"worker_name": workerName,
 		"build_id":    buildID,
 		"plan_id":     string(planID),
 		"type":        meta.Type,
@@ -239,7 +239,7 @@ func (t *team) FindBuildContainer(
 }
 
 func (t *team) CreateBuildContainer(
-	worker *Worker,
+	workerName string,
 	buildID int,
 	planID atc.PlanID,
 	meta ContainerMetadata,
@@ -268,7 +268,7 @@ func (t *team) CreateBuildContainer(
 			"team_id",
 		).
 		Values(
-			worker.Name,
+			workerName,
 			buildID,
 			string(planID),
 			meta.Type,
@@ -295,7 +295,7 @@ func (t *team) CreateBuildContainer(
 	return &creatingContainer{
 		id:         containerID,
 		handle:     handle.String(),
-		workerName: worker.Name,
+		workerName: workerName,
 		conn:       t.conn,
 	}, nil
 }
@@ -580,7 +580,7 @@ func (t *team) CreateOneOffBuild() (Build, error) {
 	}, nil
 }
 
-func (t *team) SaveWorker(worker atc.Worker, ttl time.Duration) (*Worker, error) {
+func (t *team) SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error) {
 	tx, err := t.conn.Begin()
 	if err != nil {
 		return nil, err
@@ -588,7 +588,7 @@ func (t *team) SaveWorker(worker atc.Worker, ttl time.Duration) (*Worker, error)
 
 	defer tx.Rollback()
 
-	savedWorker, err := saveWorker(tx, worker, &t.id, ttl)
+	savedWorker, err := saveWorker(tx, atcWorker, &t.id, ttl)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +598,11 @@ func (t *team) SaveWorker(worker atc.Worker, ttl time.Duration) (*Worker, error)
 		return nil, err
 	}
 
-	return savedWorker, nil
+	return &worker{
+		name:        atcWorker.Name,
+		cachedModel: &savedWorker,
+		conn:        t.conn,
+	}, nil
 }
 
 func (t *team) saveJob(tx Tx, job atc.JobConfig, pipelineID int) error {

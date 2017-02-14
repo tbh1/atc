@@ -403,7 +403,7 @@ var _ = Describe("ContainerFactory", func() {
 					})
 
 					It("marks the container for deletion", func() {
-						_, foundCreatedContainer, err := defaultTeam.FindResourceCheckContainer(defaultWorker, resourceConfig)
+						_, foundCreatedContainer, err := defaultTeam.FindResourceCheckContainer(defaultWorker.Name, resourceConfig)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(foundCreatedContainer).NotTo(BeNil())
 

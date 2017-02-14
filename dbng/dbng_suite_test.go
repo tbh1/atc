@@ -44,7 +44,7 @@ var (
 
 	defaultTeam              dbng.Team
 	defaultWorkerPayload     atc.Worker
-	defaultWorker            *dbng.Worker
+	defaultWorker            dbng.Worker
 	defaultResourceConfig    *dbng.UsedResourceConfig
 	defaultResourceType      dbng.ResourceType
 	defaultResource          *dbng.Resource

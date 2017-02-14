@@ -83,7 +83,10 @@ var _ = Describe("WorkerFactory", func() {
 
 			Context("the worker is in stalled state", func() {
 				BeforeEach(func() {
-					_, err = workerFactory.StallWorker(worker.Name)
+					_, err := workerFactory.SaveWorker(atcWorker, -5*time.Minute)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = workerFactory.StallUnresponsiveWorkers()
 					Expect(err).NotTo(HaveOccurred())
 				})
 
