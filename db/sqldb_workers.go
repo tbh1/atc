@@ -112,7 +112,7 @@ func (db *SQLDB) ReapExpiredWorkers() error {
 func scanWorker(row scannable, scanTeam bool) (SavedWorker, error) {
 	info := SavedWorker{}
 
-	var ttlSeconds *float64
+	var expiresAt *time.Time
 	var resourceTypes []byte
 	var tags []byte
 
@@ -124,16 +124,16 @@ func scanWorker(row scannable, scanTeam bool) (SavedWorker, error) {
 	var err error
 
 	if scanTeam {
-		err = row.Scan(&ttlSeconds, &info.GardenAddr, &info.BaggageclaimURL, &httpProxyURL, &httpsProxyURL, &noProxy, &info.ActiveContainers, &resourceTypes, &info.Platform, &tags, &info.Name, &info.StartTime, &teamName, &teamID)
+		err = row.Scan(&expiresAt, &info.GardenAddr, &info.BaggageclaimURL, &httpProxyURL, &httpsProxyURL, &noProxy, &info.ActiveContainers, &resourceTypes, &info.Platform, &tags, &info.Name, &info.StartTime, &teamName, &teamID)
 	} else {
-		err = row.Scan(&ttlSeconds, &info.GardenAddr, &info.BaggageclaimURL, &httpProxyURL, &httpsProxyURL, &noProxy, &info.ActiveContainers, &resourceTypes, &info.Platform, &tags, &info.Name, &info.StartTime)
+		err = row.Scan(&expiresAt, &info.GardenAddr, &info.BaggageclaimURL, &httpProxyURL, &httpsProxyURL, &noProxy, &info.ActiveContainers, &resourceTypes, &info.Platform, &tags, &info.Name, &info.StartTime)
 	}
 	if err != nil {
 		return SavedWorker{}, err
 	}
 
-	if ttlSeconds != nil {
-		info.ExpiresIn = time.Duration(*ttlSeconds) * time.Second
+	if expiresAt != nil {
+		info.ExpiresAt = time.Time(*expiresAt)
 	}
 
 	if httpProxyURL.Valid {

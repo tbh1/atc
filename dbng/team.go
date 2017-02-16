@@ -33,6 +33,7 @@ type Team interface {
 	CreateOneOffBuild() (Build, error)
 
 	SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error)
+	WorkersForTeam(teamName string) ([]Worker, error)
 
 	FindContainerByHandle(string) (CreatedContainer, bool, error)
 
@@ -53,6 +54,13 @@ type team struct {
 }
 
 func (t *team) ID() int { return t.id }
+
+func (t *team) WorkersForTeam(teamName string) ([]Worker, error) {
+	return getWorkers(t.conn, workersQuery.Where(sq.Or{
+		sq.Eq{"t.name": teamName},
+		sq.Eq{"w.team_id": nil},
+	}))
+}
 
 func (t *team) FindResourceCheckContainer(
 	workerName string,
@@ -588,7 +596,7 @@ func (t *team) SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, erro
 
 	defer tx.Rollback()
 
-	savedWorker, err := saveWorker(tx, atcWorker, &t.id, ttl)
+	savedWorker, err := saveWorker(tx, atcWorker, &t.id, ttl, t.conn)
 	if err != nil {
 		return nil, err
 	}
@@ -599,9 +607,20 @@ func (t *team) SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, erro
 	}
 
 	return &worker{
-		name:        atcWorker.Name,
-		cachedModel: &savedWorker,
-		conn:        t.conn,
+		name:             savedWorker.Name(),
+		state:            WorkerState(savedWorker.State()),
+		gardenAddr:       savedWorker.GardenAddr(),
+		baggageclaimURL:  &atcWorker.BaggageclaimURL,
+		httpProxyURL:     atcWorker.HTTPProxyURL,
+		httpsProxyURL:    atcWorker.HTTPSProxyURL,
+		noProxy:          atcWorker.NoProxy,
+		activeContainers: atcWorker.ActiveContainers,
+		resourceTypes:    atcWorker.ResourceTypes,
+		platform:         atcWorker.Platform,
+		tags:             atcWorker.Tags,
+		team:             atcWorker.Team,
+		startTime:        atcWorker.StartTime,
+		conn:             t.conn,
 	}, nil
 }
 

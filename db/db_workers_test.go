@@ -77,7 +77,7 @@ var _ = Describe("Keeping track of workers", func() {
 		}
 		expectedSavedWorkerA := db.SavedWorker{
 			WorkerInfo: infoA,
-			ExpiresIn:  0,
+			ExpiresAt:  time.Now(),
 		}
 
 		By("persisting workers with no TTLs")

@@ -45,7 +45,7 @@ var _ = Describe("ContainerFactory", func() {
 				build, err = defaultPipeline.CreateJobBuild("some-job")
 				Expect(err).NotTo(HaveOccurred())
 
-				creatingContainer, err = defaultTeam.CreateBuildContainer(defaultWorker, build.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
+				creatingContainer, err = defaultTeam.CreateBuildContainer(defaultWorker.Name(), build.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -97,7 +97,7 @@ var _ = Describe("ContainerFactory", func() {
 						err = build.Finish(dbng.BuildStatusFailed)
 						Expect(err).NotTo(HaveOccurred())
 
-						laterCreatingContainer, err = defaultTeam.CreateBuildContainer(defaultWorker, build.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
+						laterCreatingContainer, err = defaultTeam.CreateBuildContainer(defaultWorker.Name(), build.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
 						Expect(err).NotTo(HaveOccurred())
 
 						laterCreatedContainer, err = laterCreatingContainer.Created()
@@ -164,7 +164,7 @@ var _ = Describe("ContainerFactory", func() {
 						err = laterBuild.SaveStatus(dbng.BuildStatusStarted)
 						Expect(err).NotTo(HaveOccurred())
 
-						laterCreatingContainer, err = defaultTeam.CreateBuildContainer(defaultWorker, laterBuild.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
+						laterCreatingContainer, err = defaultTeam.CreateBuildContainer(defaultWorker.Name(), laterBuild.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
 						Expect(err).NotTo(HaveOccurred())
 
 						_, err = laterCreatingContainer.Created()
@@ -299,7 +299,7 @@ var _ = Describe("ContainerFactory", func() {
 						})
 
 						It("marks the container for deletion", func() {
-							_, foundCreatedContainer, err := defaultTeam.FindBuildContainer(defaultWorker, build.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
+							_, foundCreatedContainer, err := defaultTeam.FindBuildContainer(defaultWorker.Name(), build.ID(), atc.PlanID("some-job"), dbng.ContainerMetadata{Type: "task", Name: "some-task"})
 							Expect(err).NotTo(HaveOccurred())
 							Expect(foundCreatedContainer).NotTo(BeNil())
 
@@ -351,7 +351,7 @@ var _ = Describe("ContainerFactory", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				creatingContainer, err = defaultTeam.CreateResourceCheckContainer(defaultWorker, resourceConfig)
+				creatingContainer, err = defaultTeam.CreateResourceCheckContainer(defaultWorker.Name(), resourceConfig)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -403,7 +403,7 @@ var _ = Describe("ContainerFactory", func() {
 					})
 
 					It("marks the container for deletion", func() {
-						_, foundCreatedContainer, err := defaultTeam.FindResourceCheckContainer(defaultWorker.Name, resourceConfig)
+						_, foundCreatedContainer, err := defaultTeam.FindResourceCheckContainer(defaultWorker.Name(), resourceConfig)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(foundCreatedContainer).NotTo(BeNil())
 
@@ -541,7 +541,7 @@ var _ = Describe("ContainerFactory", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				creatingContainer, err := defaultTeam.CreateResourceGetContainer(defaultWorker, resourceCache, "some-task")
+				creatingContainer, err := defaultTeam.CreateResourceGetContainer(defaultWorker.Name(), resourceCache, "some-task")
 				Expect(err).NotTo(HaveOccurred())
 
 				createdContainer, err = creatingContainer.Created()

@@ -37,6 +37,7 @@ var (
 	containerFactory        dbng.ContainerFactory
 	teamFactory             dbng.TeamFactory
 	workerFactory           dbng.WorkerFactory
+	workerLifecycle         dbng.WorkerLifecycle
 	resourceConfigFactory   dbng.ResourceConfigFactory
 	resourceTypeFactory     dbng.ResourceTypeFactory
 	resourceCacheFactory    dbng.ResourceCacheFactory
@@ -83,6 +84,7 @@ var _ = BeforeEach(func() {
 	lockFactory = lock.NewLockFactory(retryableConn)
 	teamFactory = dbng.NewTeamFactory(dbConn, lockFactory)
 	workerFactory = dbng.NewWorkerFactory(dbConn)
+	workerLifecycle = dbng.NewWorkerLifecycle(dbConn)
 	resourceConfigFactory = dbng.NewResourceConfigFactory(dbConn, lockFactory)
 	resourceTypeFactory = dbng.NewResourceTypeFactory(dbConn)
 	resourceCacheFactory = dbng.NewResourceCacheFactory(dbConn, lockFactory)
@@ -126,7 +128,7 @@ var _ = BeforeEach(func() {
 	defaultResourceConfig, err = resourceConfigFactory.FindOrCreateResourceConfigForResource(logger, defaultResource.ID, "some-base-resource-type", atc.Source{}, defaultPipeline.ID(), atc.ResourceTypes{})
 	Expect(err).NotTo(HaveOccurred())
 
-	defaultCreatingContainer, err = defaultTeam.CreateResourceCheckContainer(defaultWorker, defaultResourceConfig)
+	defaultCreatingContainer, err = defaultTeam.CreateResourceCheckContainer(defaultWorker.Name(), defaultResourceConfig)
 	Expect(err).NotTo(HaveOccurred())
 
 	defaultCreatedContainer, err = defaultCreatingContainer.Created()

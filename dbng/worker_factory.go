@@ -15,12 +15,9 @@ import (
 
 type WorkerFactory interface {
 	GetWorker(name string) (Worker, bool, error)
-	SaveWorker(worker atc.Worker, ttl time.Duration) (Worker, error)
+	SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error)
 	HeartbeatWorker(worker atc.Worker, ttl time.Duration) (Worker, error)
-	Workers() ([]*Worker, error)
-
-	// move to *Team
-	WorkersForTeam(teamName string) ([]*atc.Worker, error)
+	Workers() ([]Worker, error)
 }
 
 type workerFactory struct {
@@ -47,37 +44,57 @@ var workersQuery = psql.Select(`
 		w.tags,
 		w.start_time,
 		t.name,
-		EXTRACT(epoch FROM w.expires - NOW())
+		w.expires
 	`).
 	From("workers w").
 	LeftJoin("teams t ON w.team_id = t.id")
 
 func (f *workerFactory) GetWorker(name string) (Worker, bool, error) {
-	row := workersQuery.Where(sq.Eq{"name": name}).
-		RunWith(f.conn).
+	tx, err := f.conn.Begin()
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+
+	row := workersQuery.Where(sq.Eq{"w.name": name}).
+		RunWith(tx).
 		QueryRow()
 
-	model, err := scanWorker(row)
+	worker := &worker{conn: f.conn}
+	err = scanWorker(worker, row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return nil, false, err
 	}
 
-	return &worker{
-		name:        name,
-		cachedModel: &model,
-		conn:        f.conn,
-	}, true, nil
+	return worker, true, nil
 }
 
 func (f *workerFactory) Workers() ([]Worker, error) {
-	return f.getWorkers(workersQuery)
-}
+	// TODO: GOES IN team.go Workers()
+	// selectWorkers := workersQuery
+	//
+	// if teamName != nil {
+	// 	selectWorkers = selectWorkers.Where(sq.Or{
+	// 		sq.Eq{"t.name": teamName},
+	// 		sq.Eq{"w.team_id": nil},
+	// 	})
+	// }
+	//
+	// query, args, err := selectWorkers.ToSql()
+	//
+	// if err != nil {
+	// 	return []Worker{}, err
+	// }
 
-func (f *workerFactory) WorkersForTeam(teamName string) ([]Worker, error) {
-	return f.getWorkers(workersQuery.Where(sq.Or{
-		sq.Eq{"t.name": teamName},
-		sq.Eq{"w.team_id": nil},
-	}))
+	return getWorkers(f.conn, workersQuery.RunWith(f.conn))
 }
 
 func getWorkers(conn Conn, query sq.SelectBuilder) ([]Worker, error) {
@@ -91,129 +108,105 @@ func getWorkers(conn Conn, query sq.SelectBuilder) ([]Worker, error) {
 	workers := []Worker{}
 
 	for rows.Next() {
-		model, err := scanWorker(rows)
+		worker := &worker{conn: conn}
+		err := scanWorker(worker, rows)
 		if err != nil {
 			return nil, err
 		}
 
-		workers = append(workers, &worker{
-			name:        model.Name,
-			cachedModel: &model,
-			conn:        conn,
-		})
+		workers = append(workers, worker)
 	}
 
 	return workers, nil
 }
 
-func scanWorker(row scannable) (*atc.Worker, error) {
+func scanWorker(worker *worker, row scannable) error {
 	var (
-		name          string
 		addStr        sql.NullString
 		state         string
 		bcURLStr      sql.NullString
 		httpProxyURL  sql.NullString
 		httpsProxyURL sql.NullString
 		noProxy       sql.NullString
-
-		activeContainers int
-		resourceTypes    []byte
-		platform         sql.NullString
-		tags             []byte
-		teamName         sql.NullString
-		startTime        int64
-
-		expiresIn *float64
+		resourceTypes []byte
+		platform      sql.NullString
+		tags          []byte
+		team          sql.NullString
+		startTime     sql.NullInt64
 	)
 
 	err := row.Scan(
-		&name,
+		&worker.name,
 		&addStr,
 		&state,
 		&bcURLStr,
 		&httpProxyURL,
 		&httpsProxyURL,
 		&noProxy,
-		&activeContainers,
+		&worker.activeContainers,
 		&resourceTypes,
 		&platform,
 		&tags,
-		&teamName,
+		&team,
 		&startTime,
-		&expiresIn,
+		&worker.expiresAt,
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var addr *string
 	if addStr.Valid {
-		addr = &addStr.String
+		worker.gardenAddr = &addStr.String
 	}
 
-	var bcURL *string
 	if bcURLStr.Valid {
-		bcURL = &bcURLStr.String
+		worker.baggageclaimURL = &bcURLStr.String
 	}
 
-	worker := atc.Worker{
-		Name:            name,
-		GardenAddr:      addr,
-		BaggageclaimURL: bcURL,
-		State:           WorkerState(state),
+	worker.state = WorkerState(state)
 
-		ActiveContainers: activeContainers,
-		StartTime:        startTime,
-	}
-
-	if expiresIn != nil {
-		worker.ExpiresIn = time.Duration(*expiresIn) * time.Second
+	if startTime.Valid {
+		worker.startTime = startTime.Int64
 	}
 
 	if httpProxyURL.Valid {
-		worker.HTTPProxyURL = httpProxyURL.String
+		worker.httpProxyURL = httpProxyURL.String
 	}
 
 	if httpsProxyURL.Valid {
-		worker.HTTPSProxyURL = httpsProxyURL.String
+		worker.httpsProxyURL = httpsProxyURL.String
 	}
 
 	if noProxy.Valid {
-		worker.NoProxy = noProxy.String
+		worker.noProxy = noProxy.String
 	}
 
-	if teamName.Valid {
-		worker.TeamName = teamName.String
+	if team.Valid {
+		worker.team = team.String
 	}
 
 	if platform.Valid {
-		worker.Platform = platform.String
+		worker.platform = platform.String
 	}
 
-	err = json.Unmarshal(resourceTypes, &worker.ResourceTypes)
+	err = json.Unmarshal(resourceTypes, &worker.resourceTypes)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = json.Unmarshal(tags, &worker.Tags)
+	err = json.Unmarshal(tags, &worker.tags)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &worker, nil
+	return nil
 }
 
-func (f *workerFactory) HeartbeatWorker(worker atc.Worker, ttl time.Duration) (Worker, error) {
+func (f *workerFactory) HeartbeatWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error) {
 	// In order to be able to calculate the ttl that we return to the caller
 	// we must compare time.Now() to the worker.expires column
 	// However, workers.expires column is a "timestamp (without timezone)"
 	// So we format time.Now() without any timezone information and then
 	// parse that using the same layout to strip the timezone information
-	layout := "Jan 2, 2006 15:04:05"
-	nowStr := time.Now().Format(layout)
-	now, err := time.Parse(layout, nowStr)
-	if err != nil {
-		return nil, err
-	}
 
 	tx, err := f.conn.Begin()
 	if err != nil {
@@ -239,7 +232,7 @@ func (f *workerFactory) HeartbeatWorker(worker atc.Worker, ttl time.Duration) (W
 
 	addrSql, _, err := sq.Case("state").
 		When("'landed'::worker_state", "NULL").
-		Else("'" + worker.GardenAddr + "'").
+		Else("'" + atcWorker.GardenAddr + "'").
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -247,31 +240,21 @@ func (f *workerFactory) HeartbeatWorker(worker atc.Worker, ttl time.Duration) (W
 
 	bcSql, _, err := sq.Case("state").
 		When("'landed'::worker_state", "NULL").
-		Else("'" + worker.BaggageclaimURL + "'").
+		Else("'" + atcWorker.BaggageclaimURL + "'").
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	var (
-		workerName       string
-		workerStateStr   string
-		activeContainers int
-		expiresAt        time.Time
-		addrStr          sql.NullString
-		bcURLStr         sql.NullString
-	)
-
-	err = psql.Update("workers").
+	_, err = psql.Update("workers").
 		Set("expires", sq.Expr(expires)).
 		Set("addr", sq.Expr("("+addrSql+")")).
 		Set("baggageclaim_url", sq.Expr("("+bcSql+")")).
-		Set("active_containers", worker.ActiveContainers).
+		Set("active_containers", atcWorker.ActiveContainers).
 		Set("state", sq.Expr("("+cSql+")")).
-		Where(sq.Eq{"name": worker.Name}).
+		Where(sq.Eq{"name": atcWorker.Name}).
 		RunWith(tx).
-		QueryRow().
-		Scan(&workerName, &addrStr, &bcURLStr, &workerStateStr, &expiresAt, &activeContainers)
+		Exec()
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrWorkerNotPresent
@@ -279,29 +262,28 @@ func (f *workerFactory) HeartbeatWorker(worker atc.Worker, ttl time.Duration) (W
 		return nil, err
 	}
 
-	row := workersQuery.Where(sq.Eq{"name": worker.Name}).
+	row := workersQuery.Where(sq.Eq{"w.name": atcWorker.Name}).
 		RunWith(tx).
 		QueryRow()
 
-	model, err := scanWorker(rows)
+	worker := &worker{conn: f.conn}
+	err = scanWorker(worker, row)
 	if err != nil {
-		return nil, false, err
+		if err == sql.ErrNoRows {
+			return nil, ErrWorkerNotPresent
+		}
+		return nil, err
 	}
-
-	return &worker{
-		name:        name,
-		cachedModel: &model,
-		conn:        f.conn,
-	}, true, nil
 
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}
+	return worker, nil
 
 }
 
-func (f *workerFactory) SaveWorker(worker atc.Worker, ttl time.Duration) (Worker, error) {
+func (f *workerFactory) SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error) {
 	tx, err := f.conn.Begin()
 	if err != nil {
 		return nil, err
@@ -309,7 +291,7 @@ func (f *workerFactory) SaveWorker(worker atc.Worker, ttl time.Duration) (Worker
 
 	defer tx.Rollback()
 
-	savedWorker, err := saveWorker(tx, worker, nil, ttl)
+	savedWorker, err := saveWorker(tx, atcWorker, nil, ttl, f.conn)
 	if err != nil {
 		return nil, err
 	}
@@ -319,20 +301,16 @@ func (f *workerFactory) SaveWorker(worker atc.Worker, ttl time.Duration) (Worker
 		return nil, err
 	}
 
-	return &worker{
-		name:        worker.Name,
-		cachedModel: &savedWorker,
-		conn:        f.conn,
-	}, nil
+	return savedWorker, nil
 }
 
-func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.Worker, error) {
-	resourceTypes, err := json.Marshal(worker.ResourceTypes)
+func saveWorker(tx Tx, atcWorker atc.Worker, teamID *int, ttl time.Duration, conn Conn) (Worker, error) {
+	resourceTypes, err := json.Marshal(atcWorker.ResourceTypes)
 	if err != nil {
 		return nil, err
 	}
 
-	tags, err := json.Marshal(worker.Tags)
+	tags, err := json.Marshal(atcWorker.Tags)
 	if err != nil {
 		return nil, err
 	}
@@ -345,12 +323,12 @@ func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.W
 	var oldTeamID sql.NullInt64
 
 	err = psql.Select("team_id").From("workers").Where(sq.Eq{
-		"name": worker.Name,
+		"name": atcWorker.Name,
 	}).RunWith(tx).QueryRow().Scan(&oldTeamID)
 
 	var workerState WorkerState
-	if worker.State != "" {
-		workerState = WorkerState(worker.State)
+	if atcWorker.State != "" {
+		workerState = WorkerState(atcWorker.State)
 	} else {
 		workerState = WorkerStateRunning
 	}
@@ -375,18 +353,18 @@ func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.W
 					"state",
 				).
 				Values(
-					worker.GardenAddr,
+					atcWorker.GardenAddr,
 					sq.Expr(expires),
-					worker.ActiveContainers,
+					atcWorker.ActiveContainers,
 					resourceTypes,
 					tags,
-					worker.Platform,
-					worker.BaggageclaimURL,
-					worker.HTTPProxyURL,
-					worker.HTTPSProxyURL,
-					worker.NoProxy,
-					worker.Name,
-					worker.StartTime,
+					atcWorker.Platform,
+					atcWorker.BaggageclaimURL,
+					atcWorker.HTTPProxyURL,
+					atcWorker.HTTPSProxyURL,
+					atcWorker.NoProxy,
+					atcWorker.Name,
+					atcWorker.StartTime,
 					teamID,
 					string(workerState),
 				).
@@ -405,21 +383,21 @@ func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.W
 		}
 
 		_, err = psql.Update("workers").
-			Set("addr", worker.GardenAddr).
+			Set("addr", atcWorker.GardenAddr).
 			Set("expires", sq.Expr(expires)).
-			Set("active_containers", worker.ActiveContainers).
+			Set("active_containers", atcWorker.ActiveContainers).
 			Set("resource_types", resourceTypes).
 			Set("tags", tags).
-			Set("platform", worker.Platform).
-			Set("baggageclaim_url", worker.BaggageclaimURL).
-			Set("http_proxy_url", worker.HTTPProxyURL).
-			Set("https_proxy_url", worker.HTTPSProxyURL).
-			Set("no_proxy", worker.NoProxy).
-			Set("name", worker.Name).
-			Set("start_time", worker.StartTime).
+			Set("platform", atcWorker.Platform).
+			Set("baggageclaim_url", atcWorker.BaggageclaimURL).
+			Set("http_proxy_url", atcWorker.HTTPProxyURL).
+			Set("https_proxy_url", atcWorker.HTTPSProxyURL).
+			Set("no_proxy", atcWorker.NoProxy).
+			Set("name", atcWorker.Name).
+			Set("start_time", atcWorker.StartTime).
 			Set("state", string(workerState)).
 			Where(sq.Eq{
-				"name": worker.Name,
+				"name": atcWorker.Name,
 			}).
 			RunWith(tx).
 			Exec()
@@ -428,14 +406,25 @@ func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.W
 		}
 	}
 
-	savedWorker := atc.Worker{
-		Name:       worker.Name,
-		GardenAddr: &worker.GardenAddr,
-		State:      workerState,
+	savedWorker := &worker{
+		name:             atcWorker.Name,
+		state:            workerState,
+		gardenAddr:       &atcWorker.GardenAddr,
+		baggageclaimURL:  &atcWorker.BaggageclaimURL,
+		httpProxyURL:     atcWorker.HTTPProxyURL,
+		httpsProxyURL:    atcWorker.HTTPSProxyURL,
+		noProxy:          atcWorker.NoProxy,
+		activeContainers: atcWorker.ActiveContainers,
+		resourceTypes:    atcWorker.ResourceTypes,
+		platform:         atcWorker.Platform,
+		tags:             atcWorker.Tags,
+		team:             atcWorker.Team,
+		startTime:        atcWorker.StartTime,
+		conn:             conn,
 	}
 
 	workerBaseResourceTypeIDs := []int{}
-	for _, resourceType := range worker.ResourceTypes {
+	for _, resourceType := range atcWorker.ResourceTypes {
 		workerResourceType := WorkerResourceType{
 			Worker:  savedWorker,
 			Image:   resourceType.Image,
@@ -456,7 +445,7 @@ func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.W
 
 		_, err = psql.Delete("worker_base_resource_types").
 			Where(sq.Eq{
-				"worker_name":           worker.Name,
+				"worker_name":           atcWorker.Name,
 				"base_resource_type_id": ubrt.ID,
 			}).
 			Where(sq.NotEq{
@@ -477,7 +466,7 @@ func saveWorker(tx Tx, worker atc.Worker, teamID *int, ttl time.Duration) (atc.W
 
 	_, err = psql.Delete("worker_base_resource_types").
 		Where(sq.Eq{
-			"worker_name": worker.Name,
+			"worker_name": atcWorker.Name,
 		}).
 		Where(sq.NotEq{
 			"id": workerBaseResourceTypeIDs,

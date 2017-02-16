@@ -3,6 +3,7 @@ package dbng
 import (
 	"database/sql"
 	"errors"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/concourse/atc"
@@ -13,9 +14,32 @@ var (
 	ErrCannotPruneRunningWorker = errors.New("worker-not-stalled-for-pruning")
 )
 
+type WorkerState string
+
+const (
+	WorkerStateRunning  = WorkerState("running")
+	WorkerStateStalled  = WorkerState("stalled")
+	WorkerStateLanding  = WorkerState("landing")
+	WorkerStateLanded   = WorkerState("landed")
+	WorkerStateRetiring = WorkerState("retiring")
+)
+
 type Worker interface {
-	Model() atc.Worker
-	Refresh() error // TODO: implement this
+	Name() string
+	State() WorkerState
+	GardenAddr() *string
+	BaggageclaimURL() *string
+	HTTPProxyURL() string
+	HTTPSProxyURL() string
+	NoProxy() string
+	ActiveContainers() int
+	ResourceTypes() []atc.WorkerResourceType
+	Platform() string
+	Tags() []string
+	Team() string
+	Reload() (bool, error)
+	StartTime() int64
+	ExpiresAt() time.Time
 
 	Land() error
 	Retire() error
@@ -24,30 +48,66 @@ type Worker interface {
 }
 
 type worker struct {
-	name        string
-	cachedModel *atc.Worker
-	conn        Conn
+	name             string
+	state            WorkerState
+	gardenAddr       *string
+	baggageclaimURL  *string
+	httpProxyURL     string
+	httpsProxyURL    string
+	noProxy          string
+	activeContainers int
+	resourceTypes    []atc.WorkerResourceType
+	platform         string
+	tags             []string
+	team             string
+	startTime        int64
+	expiresAt        time.Time
+	conn             Conn
 }
 
-func (worker *worker) Model() atc.Worker {
-	return *worker.cachedModel
-	// if worker.cachedModel != nil {
-	// 	return *worker.cachedModel
-	// }
-	//
-	// row := workersQuery.Where(sq.Eq{"w.name": worker.name}).
-	// 	RunWith(worker.conn).
-	// 	QueryRow()
-	//
-	// selectedWorker, err := scanWorker(row)
-	// if err != nil {
-	// 	if err == sql.ErrNoRows {
-	// 		return atc.Worker{}
-	// 	}
-	// 	return atc.Worker{}
-	// }
-	//
-	// return *selectedWorker
+func (worker *worker) Name() string                            { return worker.name }
+func (worker *worker) State() WorkerState                      { return worker.state }
+func (worker *worker) GardenAddr() *string                     { return worker.gardenAddr }
+func (worker *worker) BaggageclaimURL() *string                { return worker.baggageclaimURL }
+func (worker *worker) HTTPProxyURL() string                    { return worker.httpProxyURL }
+func (worker *worker) HTTPSProxyURL() string                   { return worker.httpsProxyURL }
+func (worker *worker) NoProxy() string                         { return worker.noProxy }
+func (worker *worker) ActiveContainers() int                   { return worker.activeContainers }
+func (worker *worker) ResourceTypes() []atc.WorkerResourceType { return worker.resourceTypes }
+func (worker *worker) Platform() string                        { return worker.platform }
+func (worker *worker) Tags() []string                          { return worker.tags }
+func (worker *worker) Team() string                            { return worker.team }
+
+// TODO: normalize time values
+func (worker *worker) StartTime() int64     { return worker.startTime }
+func (worker *worker) ExpiresAt() time.Time { return worker.expiresAt }
+
+func (worker *worker) Reload() (bool, error) {
+	tx, err := worker.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	row := workersQuery.Where(sq.Eq{"w.name": worker.name}).
+		RunWith(tx).
+		QueryRow()
+
+	err = scanWorker(worker, row)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (worker *worker) Land() error {
@@ -65,16 +125,23 @@ func (worker *worker) Land() error {
 		return err
 	}
 
-	_, err = psql.Update("workers").
+	result, err := psql.Update("workers").
 		Set("state", sq.Expr("("+cSql+")")).
 		Where(sq.Eq{"name": worker.name}).
 		RunWith(tx).
 		Exec()
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return ErrWorkerNotPresent
-		}
 		return err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return ErrWorkerNotPresent
 	}
 
 	err = tx.Commit()
@@ -85,24 +152,21 @@ func (worker *worker) Land() error {
 	return nil
 }
 
-func (worker *worker) Retire(name string) error {
+func (worker *worker) Retire() error {
 	tx, err := worker.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	_, err = psql.Update("workers").
+	result, err := psql.Update("workers").
 		SetMap(map[string]interface{}{
-			"state": string(atc.WorkerStateRetiring),
+			"state": string(WorkerStateRetiring),
 		}).
-		Where(sq.Eq{"name": name}).
+		Where(sq.Eq{"name": worker.name}).
 		RunWith(tx).
 		Exec()
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return ErrWorkerNotPresent
-		}
 		return err
 	}
 
@@ -111,10 +175,19 @@ func (worker *worker) Retire(name string) error {
 		return err
 	}
 
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return ErrWorkerNotPresent
+	}
+
 	return nil
 }
 
-func (worker *worker) Prune(name string) error {
+func (worker *worker) Prune() error {
 	tx, err := worker.conn.Begin()
 	if err != nil {
 		return err
@@ -123,20 +196,15 @@ func (worker *worker) Prune(name string) error {
 
 	rows, err := sq.Delete("workers").
 		Where(sq.Eq{
-			"name": name,
+			"name": worker.name,
 		}).
 		Where(sq.NotEq{
-			"state": string(atc.WorkerStateRunning),
+			"state": string(WorkerStateRunning),
 		}).
 		PlaceholderFormat(sq.Dollar).
 		RunWith(tx).
 		Exec()
 
-	if err != nil {
-		return err
-	}
-
-	err = tx.Commit()
 	if err != nil {
 		return err
 	}
@@ -147,19 +215,31 @@ func (worker *worker) Prune(name string) error {
 	}
 
 	if affected == 0 {
-		atcWorker := worker.Model()
-
-		if atcWorker == (atc.Worker{}) {
-			return ErrWorkerNotPresent
+		//check whether the worker exists in the database at all
+		var one int
+		err := psql.Select("1").From("workers").Where(sq.Eq{"name": worker.name}).
+			RunWith(tx).
+			QueryRow().
+			Scan(&one)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return ErrWorkerNotPresent
+			}
+			return err
 		}
 
 		return ErrCannotPruneRunningWorker
 	}
 
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (worker *worker) Delete(name string) error {
+func (worker *worker) Delete() error {
 	tx, err := worker.conn.Begin()
 	if err != nil {
 		return err
@@ -168,7 +248,7 @@ func (worker *worker) Delete(name string) error {
 
 	_, err = sq.Delete("workers").
 		Where(sq.Eq{
-			"name": name,
+			"name": worker.name,
 		}).
 		PlaceholderFormat(sq.Dollar).
 		RunWith(tx).

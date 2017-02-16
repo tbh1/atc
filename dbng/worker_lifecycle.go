@@ -4,7 +4,6 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/concourse/atc"
 )
 
 //go:generate counterfeiter . WorkerLifecycle
@@ -19,7 +18,13 @@ type workerLifecycle struct {
 	conn Conn
 }
 
-func (lifecycle *workerLifecycle) StallUnresponsiveWorkers() ([]*atc.Worker, error) {
+func NewWorkerLifecycle(conn Conn) WorkerLifecycle {
+	return &workerLifecycle{
+		conn: conn,
+	}
+}
+
+func (lifecycle *workerLifecycle) StallUnresponsiveWorkers() ([]string, error) {
 	query, args, err := psql.Update("workers").
 		SetMap(map[string]interface{}{
 			"state":            string(WorkerStateStalled),
@@ -29,61 +34,21 @@ func (lifecycle *workerLifecycle) StallUnresponsiveWorkers() ([]*atc.Worker, err
 		}).
 		Where(sq.Eq{"state": string(WorkerStateRunning)}).
 		Where(sq.Expr("expires < NOW()")).
-		Suffix("RETURNING name, addr, baggageclaim_url, state").
+		Suffix("RETURNING name").
 		ToSql()
 	if err != nil {
-		return []*atc.Worker{}, err
+		return []string{}, err
 	}
 
 	rows, err := lifecycle.conn.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	workers := []*atc.Worker{}
-
-	for rows.Next() {
-		var (
-			name     string
-			addrStr  sql.NullString
-			bcURLStr sql.NullString
-			state    string
-		)
-
-		err = rows.Scan(&name, &addrStr, &bcURLStr, &state)
-		if err != nil {
-			return nil, err
-		}
-
-		var addr *string
-		if addrStr.Valid {
-			addr = &addrStr.String
-		}
-
-		var bcURL *string
-		if bcURLStr.Valid {
-			bcURL = &bcURLStr.String
-		}
-
-		workers = append(workers, &atc.Worker{
-			Name:            name,
-			GardenAddr:      addr,
-			BaggageclaimURL: bcURL,
-			State:           WorkerState(state),
-		})
-	}
-
-	return workers, nil
+	return workersAffected(rows)
 }
 
-func (lifecycle *workerLifecycle) DeleteFinishedRetiringWorkers() error {
-	tx, err := lifecycle.conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+func (lifecycle *workerLifecycle) DeleteFinishedRetiringWorkers() ([]string, error) {
 	// Squirrel does not have default support for subqueries in where clauses.
 	// We hacked together a way to do it
 	//
@@ -114,7 +79,7 @@ func (lifecycle *workerLifecycle) DeleteFinishedRetiringWorkers() error {
 		}).ToSql()
 
 	if err != nil {
-		return err
+		return []string{}, err
 	}
 
 	// Then we inject the subquery sql directly into
@@ -124,34 +89,28 @@ func (lifecycle *workerLifecycle) DeleteFinishedRetiringWorkers() error {
 	// We use sq.Delete instead of psql.Delete for the same reason
 	// but then change the placeholders using .PlaceholderFormat(sq.Dollar)
 	// to go back to postgres's format
-	_, err = sq.Delete("workers").
+	query, args, err := sq.Delete("workers").
 		Where(sq.Eq{
 			"state": string(WorkerStateRetiring),
 		}).
 		Where("name NOT IN ("+subQ+")", subQArgs...).
 		PlaceholderFormat(sq.Dollar).
-		RunWith(tx).
-		Exec()
+		Suffix("RETURNING name").
+		ToSql()
 
 	if err != nil {
-		return err
+		return []string{}, err
 	}
 
-	err = tx.Commit()
+	rows, err := lifecycle.conn.Query(query, args...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return workersAffected(rows)
 }
 
-func (lifecycle *workerLifecycle) LandFinishedLandingWorkers() error {
-	tx, err := lifecycle.conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+func (lifecycle *workerLifecycle) LandFinishedLandingWorkers() ([]string, error) {
 	subQ, subQArgs, err := sq.Select("w.name").
 		Distinct().
 		From("builds b").
@@ -176,10 +135,10 @@ func (lifecycle *workerLifecycle) LandFinishedLandingWorkers() error {
 		}).ToSql()
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = sq.Update("workers").
+	query, args, err := sq.Update("workers").
 		Set("state", string(WorkerStateLanded)).
 		Set("addr", nil).
 		Set("baggageclaim_url", nil).
@@ -188,17 +147,38 @@ func (lifecycle *workerLifecycle) LandFinishedLandingWorkers() error {
 		}).
 		Where("name NOT IN ("+subQ+")", subQArgs...).
 		PlaceholderFormat(sq.Dollar).
-		RunWith(tx).
-		Exec()
+		ToSql()
 
 	if err != nil {
-		return err
+		return []string{}, err
 	}
 
-	err = tx.Commit()
+	rows, err := lifecycle.conn.Query(query, args...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return workersAffected(rows)
+}
+
+func workersAffected(rows *sql.Rows) ([]string, error) {
+	var (
+		err         error
+		workerNames []string
+	)
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+
+		err = rows.Scan(&name)
+		if err != nil {
+			return nil, err
+		}
+
+		workerNames = append(workerNames, name)
+	}
+
+	return workerNames, err
 }

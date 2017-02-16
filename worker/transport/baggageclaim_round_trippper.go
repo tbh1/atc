@@ -4,45 +4,44 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/concourse/atc"
 	"github.com/concourse/atc/dbng"
 )
 
 type baggageclaimRoundTripper struct {
-	db                    TransportDB
-	workerName            string
+	worker                dbng.Worker
 	innerRoundTripper     http.RoundTripper
 	cachedBaggageclaimURL *string
 }
 
-func NewBaggageclaimRoundTripper(workerName string, baggageclaimURL *string, db TransportDB, innerRoundTripper http.RoundTripper) http.RoundTripper {
+func NewBaggageclaimRoundTripper(worker dbng.Worker, innerRoundTripper http.RoundTripper) http.RoundTripper {
 	return &baggageclaimRoundTripper{
-		innerRoundTripper: innerRoundTripper,
-		workerName:        workerName,
-		db:                db,
-		cachedBaggageclaimURL: baggageclaimURL,
+		innerRoundTripper:     innerRoundTripper,
+		worker:                worker,
+		cachedBaggageclaimURL: worker.BaggageclaimURL(),
 	}
 }
 
 func (c *baggageclaimRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
 	if c.cachedBaggageclaimURL == nil {
-		savedWorker, found, err := c.db.GetWorker(c.workerName)
+		found, err := c.worker.Reload()
 		if err != nil {
 			return nil, err
 		}
 
 		if !found {
-			return nil, ErrMissingWorker{WorkerName: c.workerName}
+			return nil, ErrMissingWorker{WorkerName: c.worker.Name()}
 		}
 
-		if savedWorker.State == dbng.WorkerStateStalled {
-			return nil, ErrWorkerStalled{WorkerName: c.workerName}
+		if c.worker.State() == atc.WorkerStateStalled {
+			return nil, ErrWorkerStalled{WorkerName: c.worker.Name()}
 		}
 
-		if savedWorker.BaggageclaimURL == nil {
-			return nil, ErrWorkerBaggageclaimURLIsMissing{WorkerName: savedWorker.Name}
+		if c.worker.BaggageclaimURL() == nil {
+			return nil, ErrWorkerBaggageclaimURLIsMissing{WorkerName: c.worker.Name()}
 		}
 
-		c.cachedBaggageclaimURL = savedWorker.BaggageclaimURL
+		c.cachedBaggageclaimURL = c.worker.BaggageclaimURL()
 	}
 
 	baggageclaimURL, err := url.Parse(*c.cachedBaggageclaimURL)
