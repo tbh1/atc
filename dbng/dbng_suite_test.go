@@ -23,7 +23,7 @@ import (
 
 func TestDB(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "DB Suite")
+	RunSpecs(t, "DB Suite : The Next Generation")
 }
 
 var (

@@ -42,8 +42,9 @@ var workersQuery = psql.Select(`
 		w.resource_types,
 		w.platform,
 		w.tags,
-		w.start_time,
 		t.name,
+		w.team_id,
+		w.start_time,
 		w.expires
 	`).
 	From("workers w").
@@ -78,27 +79,17 @@ func (f *workerFactory) GetWorker(name string) (Worker, bool, error) {
 }
 
 func (f *workerFactory) Workers() ([]Worker, error) {
-	// TODO: GOES IN team.go Workers()
-	// selectWorkers := workersQuery
-	//
-	// if teamName != nil {
-	// 	selectWorkers = selectWorkers.Where(sq.Or{
-	// 		sq.Eq{"t.name": teamName},
-	// 		sq.Eq{"w.team_id": nil},
-	// 	})
-	// }
-	//
-	// query, args, err := selectWorkers.ToSql()
-	//
-	// if err != nil {
-	// 	return []Worker{}, err
-	// }
-
-	return getWorkers(f.conn, workersQuery.RunWith(f.conn))
+	return getWorkers(f.conn, workersQuery)
 }
 
 func getWorkers(conn Conn, query sq.SelectBuilder) ([]Worker, error) {
-	rows, err := query.Query()
+	tx, err := conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := query.RunWith(tx).Query()
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +108,11 @@ func getWorkers(conn Conn, query sq.SelectBuilder) ([]Worker, error) {
 		workers = append(workers, worker)
 	}
 
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
 	return workers, nil
 }
 
@@ -131,8 +127,10 @@ func scanWorker(worker *worker, row scannable) error {
 		resourceTypes []byte
 		platform      sql.NullString
 		tags          []byte
-		team          sql.NullString
+		teamName      sql.NullString
+		teamID        sql.NullInt64
 		startTime     sql.NullInt64
+		expiresAt     *time.Time
 	)
 
 	err := row.Scan(
@@ -147,9 +145,10 @@ func scanWorker(worker *worker, row scannable) error {
 		&resourceTypes,
 		&platform,
 		&tags,
-		&team,
+		&teamName,
+		&teamID,
 		&startTime,
-		&worker.expiresAt,
+		&expiresAt,
 	)
 	if err != nil {
 		return err
@@ -169,6 +168,10 @@ func scanWorker(worker *worker, row scannable) error {
 		worker.startTime = startTime.Int64
 	}
 
+	if expiresAt != nil {
+		worker.expiresAt = *expiresAt
+	}
+
 	if httpProxyURL.Valid {
 		worker.httpProxyURL = httpProxyURL.String
 	}
@@ -181,8 +184,12 @@ func scanWorker(worker *worker, row scannable) error {
 		worker.noProxy = noProxy.String
 	}
 
-	if team.Valid {
-		worker.team = team.String
+	if teamName.Valid {
+		worker.teamName = teamName.String
+	}
+
+	if teamID.Valid {
+		worker.teamID = int(teamID.Int64)
 	}
 
 	if platform.Valid {
@@ -406,6 +413,11 @@ func saveWorker(tx Tx, atcWorker atc.Worker, teamID *int, ttl time.Duration, con
 		}
 	}
 
+	var workerTeamID int
+	if teamID != nil {
+		workerTeamID = *teamID
+	}
+
 	savedWorker := &worker{
 		name:             atcWorker.Name,
 		state:            workerState,
@@ -418,7 +430,8 @@ func saveWorker(tx Tx, atcWorker atc.Worker, teamID *int, ttl time.Duration, con
 		resourceTypes:    atcWorker.ResourceTypes,
 		platform:         atcWorker.Platform,
 		tags:             atcWorker.Tags,
-		team:             atcWorker.Team,
+		teamName:         atcWorker.Team,
+		teamID:           workerTeamID,
 		startTime:        atcWorker.StartTime,
 		conn:             conn,
 	}

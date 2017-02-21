@@ -33,7 +33,7 @@ type Team interface {
 	CreateOneOffBuild() (Build, error)
 
 	SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, error)
-	WorkersForTeam(teamName string) ([]Worker, error)
+	Workers() ([]Worker, error)
 
 	FindContainerByHandle(string) (CreatedContainer, bool, error)
 
@@ -55,9 +55,9 @@ type team struct {
 
 func (t *team) ID() int { return t.id }
 
-func (t *team) WorkersForTeam(teamName string) ([]Worker, error) {
+func (t *team) Workers() ([]Worker, error) {
 	return getWorkers(t.conn, workersQuery.Where(sq.Or{
-		sq.Eq{"t.name": teamName},
+		sq.Eq{"t.id": t.id},
 		sq.Eq{"w.team_id": nil},
 	}))
 }
@@ -618,7 +618,8 @@ func (t *team) SaveWorker(atcWorker atc.Worker, ttl time.Duration) (Worker, erro
 		resourceTypes:    atcWorker.ResourceTypes,
 		platform:         atcWorker.Platform,
 		tags:             atcWorker.Tags,
-		team:             atcWorker.Team,
+		teamName:         atcWorker.Team,
+		teamID:           t.id,
 		startTime:        atcWorker.StartTime,
 		conn:             t.conn,
 	}, nil

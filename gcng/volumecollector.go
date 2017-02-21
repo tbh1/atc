@@ -73,15 +73,15 @@ func (vc *volumeCollector) Run() error {
 	for _, destroyingVolume := range destroyingVolumes {
 		vLog := vc.logger.Session("destroy", lager.Data{
 			"handle": destroyingVolume.Handle(),
-			"worker": destroyingVolume.Worker().Name,
+			"worker": destroyingVolume.Worker().Name(),
 		})
 
-		if destroyingVolume.Worker().BaggageclaimURL == nil {
-			vLog.Debug("baggageclaim-url-is-missing", lager.Data{"worker-name": destroyingVolume.Worker().Name})
+		if destroyingVolume.Worker().BaggageclaimURL() == nil {
+			vLog.Debug("baggageclaim-url-is-missing", lager.Data{"worker-name": destroyingVolume.Worker().Name()})
 			continue
 		}
 
-		baggageclaimClient := vc.baggageclaimClientFactory.NewClient(*destroyingVolume.Worker().BaggageclaimURL, destroyingVolume.Worker().Name)
+		baggageclaimClient := vc.baggageclaimClientFactory.NewClient(*destroyingVolume.Worker().BaggageclaimURL(), destroyingVolume.Worker().Name())
 		volume, found, err := baggageclaimClient.LookupVolume(vc.logger, destroyingVolume.Handle())
 		if err != nil {
 			vLog.Error("failed-to-lookup-volume-in-baggageclaim", err)

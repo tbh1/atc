@@ -171,14 +171,14 @@ var _ = Describe("VolumeFactory", func() {
 
 			for _, vol := range createdVolumes {
 				createdHandles = append(createdHandles, vol.Handle())
-				Expect(vol.Worker().BaggageclaimURL).To(Equal(&expectAddr))
+				Expect(*vol.Worker().BaggageclaimURL()).To(Equal(expectAddr))
 			}
 			Expect(createdHandles).To(Equal(expectedCreatedHandles))
 
 			destroyingHandles := []string{}
 			for _, vol := range destoryingVolumes {
 				destroyingHandles = append(destroyingHandles, vol.Handle())
-				Expect(vol.Worker().BaggageclaimURL).To(Equal(&expectAddr))
+				Expect(*vol.Worker().BaggageclaimURL()).To(Equal(expectAddr))
 			}
 			Expect(destroyingHandles).To(Equal(destroyingHandles))
 		})

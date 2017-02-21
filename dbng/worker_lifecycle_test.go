@@ -287,7 +287,7 @@ var _ = Describe("Worker Lifecycle", func() {
 				foundWorker, found, err := workerFactory.GetWorker(atcWorker.Name)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(found).To(BeTrue())
-				Expect(foundWorker.State).To(Equal(dbng.WorkerStateRunning))
+				Expect(foundWorker.State()).To(Equal(dbng.WorkerStateRunning))
 			})
 		})
 
@@ -310,23 +310,29 @@ var _ = Describe("Worker Lifecycle", func() {
 					foundWorker, found, err := workerFactory.GetWorker(atcWorker.Name)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(found).To(BeTrue())
-					Expect(foundWorker.State).To(Equal(dbng.WorkerStateLanded))
+					Expect(foundWorker.State()).To(Equal(dbng.WorkerStateLanded))
 				})
 
 				It("clears out the garden/baggageclaim addresses", func() {
 					var (
-						a1 sql.NullString
-						b1 sql.NullString
-						a2 sql.NullString
-						b2 sql.NullString
+						a1    sql.NullString
+						b1    sql.NullString
+						a2    sql.NullString
+						b2    sql.NullString
+						found bool
+						err   error
 					)
+
+					worker, found, err = workerFactory.GetWorker(atcWorker.Name)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(found).To(BeTrue())
 
 					dbConn.QueryRow("SELECT addr, baggageclaim_url FROM workers WHERE name = '"+atcWorker.Name+"'").Scan(&a1, &b1)
 
 					Expect(a1.Valid).To(BeTrue())
 					Expect(b1.Valid).To(BeTrue())
 
-					err := worker.Land()
+					err = worker.Land()
 					Expect(err).NotTo(HaveOccurred())
 
 					dbConn.QueryRow("SELECT addr, baggageclaim_url FROM workers WHERE name = "+atcWorker.Name+"'").Scan(&a2, &b2)
@@ -357,7 +363,7 @@ var _ = Describe("Worker Lifecycle", func() {
 					foundWorker, found, err := workerFactory.GetWorker(atcWorker.Name)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(found).To(BeTrue())
-					Expect(foundWorker.State).To(Equal(expectedState))
+					Expect(foundWorker.State()).To(Equal(expectedState))
 				},
 				Entry("pending", dbng.BuildStatusPending, dbng.WorkerStateLanding),
 				Entry("started", dbng.BuildStatusStarted, dbng.WorkerStateLanding),
@@ -384,7 +390,7 @@ var _ = Describe("Worker Lifecycle", func() {
 				foundWorker, found, err := workerFactory.GetWorker(atcWorker.Name)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(found).To(BeTrue())
-				Expect(foundWorker.State).To(Equal(expectedState))
+				Expect(foundWorker.State()).To(Equal(expectedState))
 			}
 
 			Context("when worker has build with uninterruptible job", func() {

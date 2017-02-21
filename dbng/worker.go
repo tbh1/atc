@@ -24,6 +24,8 @@ const (
 	WorkerStateRetiring = WorkerState("retiring")
 )
 
+//go:generate counterfeiter . Worker
+
 type Worker interface {
 	Name() string
 	State() WorkerState
@@ -36,7 +38,8 @@ type Worker interface {
 	ResourceTypes() []atc.WorkerResourceType
 	Platform() string
 	Tags() []string
-	Team() string
+	TeamID() int
+	TeamName() string
 	Reload() (bool, error)
 	StartTime() int64
 	ExpiresAt() time.Time
@@ -59,7 +62,8 @@ type worker struct {
 	resourceTypes    []atc.WorkerResourceType
 	platform         string
 	tags             []string
-	team             string
+	teamID           int
+	teamName         string
 	startTime        int64
 	expiresAt        time.Time
 	conn             Conn
@@ -76,7 +80,8 @@ func (worker *worker) ActiveContainers() int                   { return worker.a
 func (worker *worker) ResourceTypes() []atc.WorkerResourceType { return worker.resourceTypes }
 func (worker *worker) Platform() string                        { return worker.platform }
 func (worker *worker) Tags() []string                          { return worker.tags }
-func (worker *worker) Team() string                            { return worker.team }
+func (worker *worker) TeamID() int                             { return worker.teamID }
+func (worker *worker) TeamName() string                        { return worker.teamName }
 
 // TODO: normalize time values
 func (worker *worker) StartTime() int64     { return worker.startTime }

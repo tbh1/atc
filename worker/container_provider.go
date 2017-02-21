@@ -199,10 +199,7 @@ func (p *containerProvider) FindOrCreateBuildContainer(
 		outputPaths,
 		func() (dbng.CreatingContainer, dbng.CreatedContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).FindBuildContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				id.BuildID,
 				id.PlanID,
 				dbng.ContainerMetadata{
@@ -213,10 +210,7 @@ func (p *containerProvider) FindOrCreateBuildContainer(
 		},
 		func() (dbng.CreatingContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).CreateBuildContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				id.BuildID,
 				id.PlanID,
 				dbng.ContainerMetadata{
@@ -263,19 +257,13 @@ func (p *containerProvider) FindOrCreateResourceCheckContainer(
 		map[string]string{},
 		func() (dbng.CreatingContainer, dbng.CreatedContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).FindResourceCheckContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				resourceConfig,
 			)
 		},
 		func() (dbng.CreatingContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).CreateResourceCheckContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				resourceConfig,
 			)
 		},
@@ -315,19 +303,13 @@ func (p *containerProvider) FindOrCreateResourceTypeCheckContainer(
 		map[string]string{},
 		func() (dbng.CreatingContainer, dbng.CreatedContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).FindResourceCheckContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				resourceConfig,
 			)
 		},
 		func() (dbng.CreatingContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).CreateResourceCheckContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				resourceConfig,
 			)
 		},
@@ -410,20 +392,14 @@ func (p *containerProvider) FindOrCreateResourceGetContainer(
 		map[string]string{},
 		func() (dbng.CreatingContainer, dbng.CreatedContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).FindResourceGetContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				resourceCache,
 				metadata.StepName,
 			)
 		},
 		func() (dbng.CreatingContainer, error) {
 			return p.dbTeamFactory.GetByID(spec.TeamID).CreateResourceGetContainer(
-				&dbng.Worker{
-					Name:       p.worker.Name(),
-					GardenAddr: p.worker.Address(),
-				},
+				p.worker.Name(),
 				resourceCache,
 				metadata.StepName,
 			)

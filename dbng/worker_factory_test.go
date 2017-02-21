@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = FDescribe("WorkerFactory", func() {
+var _ = Describe("WorkerFactory", func() {
 	var (
 		atcWorker atc.Worker
 		worker    dbng.Worker
@@ -127,50 +127,6 @@ var _ = FDescribe("WorkerFactory", func() {
 		})
 	})
 
-	Describe("SaveWorker", func() {
-		var (
-			otherTeam dbng.Team
-		)
-
-		BeforeEach(func() {
-			var err error
-			otherTeam, err = teamFactory.CreateTeam("otherTeam")
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		Context("the worker already exists", func() {
-			Context("the worker is not in stalled state", func() {
-				Context("the team_id of the new worker is the same", func() {
-					BeforeEach(func() {
-						_, err := defaultTeam.SaveWorker(atcWorker, 5*time.Minute)
-						Expect(err).NotTo(HaveOccurred())
-					})
-
-					It("overwrites all the data", func() {
-						atcWorker.GardenAddr = "new-garden-addr"
-						savedWorker, err := defaultTeam.SaveWorker(atcWorker, 5*time.Minute)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(savedWorker.Name()).To(Equal("some-name"))
-						Expect(*savedWorker.GardenAddr()).To(Equal("new-garden-addr"))
-						Expect(savedWorker.State()).To(Equal(dbng.WorkerStateRunning))
-					})
-				})
-
-				Context("the team_id of the new worker is different", func() {
-					BeforeEach(func() {
-						_, err := otherTeam.SaveWorker(atcWorker, 5*time.Minute)
-						Expect(err).NotTo(HaveOccurred())
-					})
-
-					It("errors", func() {
-						_, err := defaultTeam.SaveWorker(atcWorker, 5*time.Minute)
-						Expect(err).To(HaveOccurred())
-					})
-				})
-			})
-		})
-	})
-
 	Describe("GetWorker", func() {
 		Context("when the worker is present", func() {
 			BeforeEach(func() {
@@ -241,12 +197,14 @@ var _ = FDescribe("WorkerFactory", func() {
 				workers, err := workerFactory.Workers()
 				Expect(err).NotTo(HaveOccurred())
 				Expect(len(workers)).To(Equal(2))
-				Expect(workers[0].Name()).To(Equal("some-worker"))
-				Expect(workers[0].GardenAddr()).To(Equal("some-garden-addr"))
-				Expect(workers[0].BaggageclaimURL()).To(Equal("some-bc-url"))
+
+				Expect(workers[0].Name()).To(Equal("some-name"))
+				Expect(*workers[0].GardenAddr()).To(Equal("some-garden-addr"))
+				Expect(*workers[0].BaggageclaimURL()).To(Equal("some-bc-url"))
+
 				Expect(workers[1].Name()).To(Equal("some-new-worker"))
-				Expect(workers[1].GardenAddr()).To(Equal("some-other-garden-addr"))
-				Expect(workers[1].BaggageclaimURL()).To(Equal("some-other-bc-url"))
+				Expect(*workers[1].GardenAddr()).To(Equal("some-other-garden-addr"))
+				Expect(*workers[1].BaggageclaimURL()).To(Equal("some-other-bc-url"))
 			})
 		})
 
@@ -283,12 +241,19 @@ var _ = FDescribe("WorkerFactory", func() {
 			It("updates the expires field and the number of active containers", func() {
 				atcWorker.ActiveContainers = 1
 
+				now := time.Now()
+				By("current time")
+				By(now.String())
+				later := now.Add(ttl)
+				By("later time")
+				By(later.String())
+				By("found worker expiry")
 				foundWorker, err := workerFactory.HeartbeatWorker(atcWorker, ttl)
 				Expect(err).NotTo(HaveOccurred())
-				expiry := foundWorker.ExpiresAt()
+				By(foundWorker.ExpiresAt().String())
 
 				Expect(foundWorker.Name()).To(Equal(atcWorker.Name))
-				Expect(expiry.Add(-ttl)).To(And(BeNumerically("<=", time.Now().Add(epsilon)), BeNumerically(">", time.Now())))
+				Expect(foundWorker.ExpiresAt()).To(BeTemporally("~", later, epsilon))
 				Expect(foundWorker.ActiveContainers()).To(And(Not(Equal(activeContainers)), Equal(1)))
 				Expect(*foundWorker.GardenAddr()).To(Equal("some-garden-addr"))
 				Expect(*foundWorker.BaggageclaimURL()).To(Equal("some-bc-url"))

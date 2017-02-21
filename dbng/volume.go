@@ -353,7 +353,7 @@ func (volume *createdVolume) CreateChildForContainer(container CreatingContainer
 		"path",
 	}
 	columnValues := []interface{}{
-		volume.worker.Name,
+		volume.worker.Name(),
 		volume.id,
 		VolumeStateCreated,
 		handle.String(),

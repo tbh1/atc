@@ -147,6 +147,7 @@ func (lifecycle *workerLifecycle) LandFinishedLandingWorkers() ([]string, error)
 		}).
 		Where("name NOT IN ("+subQ+")", subQArgs...).
 		PlaceholderFormat(sq.Dollar).
+		Suffix("RETURNING name").
 		ToSql()
 
 	if err != nil {
