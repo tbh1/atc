@@ -375,6 +375,8 @@ var _ = Describe("Pool", func() {
 			id   Identifier
 			spec ContainerSpec
 
+			fakeContainer *workerfakes.FakeContainer
+
 			createdContainer Container
 			createErr        error
 			resourceTypes    atc.VersionedResourceTypes
@@ -382,10 +384,16 @@ var _ = Describe("Pool", func() {
 
 		BeforeEach(func() {
 			fakeImageFetchingDelegate = new(workerfakes.FakeImageFetchingDelegate)
+
 			id = Identifier{
 				ResourceID: 1234,
 			}
-			spec = ContainerSpec{ImageSpec: ImageSpec{ResourceType: "some-type"}}
+
+			spec = ContainerSpec{
+				ImageSpec: ImageSpec{ResourceType: "some-type"},
+				TeamID:    4567,
+			}
+
 			resourceTypes = atc.VersionedResourceTypes{
 				{
 					ResourceType: atc.ResourceType{
@@ -428,22 +436,62 @@ var _ = Describe("Pool", func() {
 					Version: atc.Version{"some": "version"},
 				},
 			}
+
+			fakeContainer = new(workerfakes.FakeContainer)
 		})
 
 		JustBeforeEach(func() {
-			createdContainer, createErr = pool.FindOrCreateBuildContainer(logger, nil, fakeImageFetchingDelegate, id, Metadata{}, spec, resourceTypes, nil)
+			createdContainer, createErr = pool.FindOrCreateBuildContainer(
+				logger,
+				make(chan os.Signal),
+				fakeImageFetchingDelegate,
+				id,
+				Metadata{},
+				spec,
+				resourceTypes,
+				map[string]string{},
+			)
 		})
 
-		Context("with multiple workers", func() {
+		Context("when a worker is found with the container", func() {
+			var fakeWorker *workerfakes.FakeWorker
+
+			BeforeEach(func() {
+				fakeWorker = new(workerfakes.FakeWorker)
+				fakeProvider.FindWorkerForBuildContainerReturns(fakeWorker, true, nil)
+				fakeWorker.FindOrCreateBuildContainerReturns(fakeContainer, nil)
+			})
+
+			It("succeeds", func() {
+				Expect(createErr).NotTo(HaveOccurred())
+			})
+
+			It("returns the created container", func() {
+				Expect(createdContainer).To(Equal(fakeContainer))
+			})
+
+			It("'find-or-create's on the particular worker", func() {
+				_, actualTeamID, actualResourceUser, actualResourceType, actualResourceSource, actualResourceTypes := fakeProvider.FindWorkerForBuildContainerArgsForCall(0)
+				Expect(actualTeamID).To(Equal(4567))
+				Expect(actualResourceUser).To(Equal(dbng.ForBuild{42}))
+				Expect(actualResourceType).To(Equal("some-type"))
+				Expect(actualResourceSource).To(Equal(atc.Source{"some": "source"}))
+				Expect(actualResourceTypes).To(Equal(resourceTypes))
+
+				Expect(fakeWorker.FindOrCreateBuildContainerCallCount()).To(Equal(1))
+			})
+		})
+
+		Context("when a worker is not found, and multiple are present", func() {
 			var (
 				workerA *workerfakes.FakeWorker
 				workerB *workerfakes.FakeWorker
 				workerC *workerfakes.FakeWorker
-
-				fakeContainer *workerfakes.FakeContainer
 			)
 
 			BeforeEach(func() {
+				fakeProvider.FindWorkerForBuildContainerReturns(nil, false, nil)
+
 				workerA = new(workerfakes.FakeWorker)
 				workerB = new(workerfakes.FakeWorker)
 				workerC = new(workerfakes.FakeWorker)
@@ -455,7 +503,6 @@ var _ = Describe("Pool", func() {
 				workerB.SatisfyingReturns(workerB, nil)
 				workerC.SatisfyingReturns(nil, errors.New("nope"))
 
-				fakeContainer = new(workerfakes.FakeContainer)
 				workerA.FindOrCreateBuildContainerReturns(fakeContainer, nil)
 				workerB.FindOrCreateBuildContainerReturns(fakeContainer, nil)
 				workerC.FindOrCreateBuildContainerReturns(fakeContainer, nil)
@@ -490,7 +537,16 @@ var _ = Describe("Pool", func() {
 
 			It("creates using a random worker", func() {
 				for i := 1; i < 100; i++ { // account for initial create in JustBefore
-					createdContainer, createErr := pool.FindOrCreateBuildContainer(logger, nil, fakeImageFetchingDelegate, id, Metadata{}, spec, resourceTypes, nil)
+					createdContainer, createErr := pool.FindOrCreateBuildContainer(
+						logger,
+						make(chan os.Signal),
+						fakeImageFetchingDelegate,
+						id,
+						Metadata{},
+						spec,
+						resourceTypes,
+						map[string]string{},
+					)
 					Expect(createErr).NotTo(HaveOccurred())
 					Expect(createdContainer).To(Equal(fakeContainer))
 				}
@@ -1053,7 +1109,6 @@ var _ = Describe("Pool", func() {
 						Expect(foundContainer).To(Equal(fakeContainer))
 					})
 				})
-
 			})
 		})
 	})

@@ -20,6 +20,13 @@ type WorkerProvider interface {
 	RunningWorkers() ([]Worker, error)
 	GetWorker(string) (Worker, bool, error)
 
+	FindWorkerForBuildContainer(
+		logger lager.Logger,
+		teamID int,
+		buildID int,
+		planID atc.PlanID,
+	) (Worker, bool, error)
+
 	FindWorkerForResourceCheckContainer(
 		logger lager.Logger,
 		teamID int,
